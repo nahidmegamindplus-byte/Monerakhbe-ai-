@@ -35,7 +35,7 @@ const SAMPLE_SCENARIOS = [
 export default function InteractiveDemo() {
   const [inputText, setInputText] = useState(SAMPLE_SCENARIOS[0].text);
   const [activeScenario, setActiveScenario] = useState(0);
-  const [parsed, setParsed] = useState(parseMessageFallback(SAMPLE_SCENARIOS[0].text));
+  const [parsed, setParsed] = useState(() => parseMessageFallback(SAMPLE_SCENARIOS[0].text));
 
   const handleSelectScenario = (index: number) => {
     setActiveScenario(index);

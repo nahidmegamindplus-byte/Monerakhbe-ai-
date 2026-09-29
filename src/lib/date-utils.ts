@@ -50,28 +50,40 @@ export function toBanglaDigits(text: string | number): string {
   return String(text).replace(/[0-9]/g, (digit) => ENGLISH_TO_BANGLA_DIGITS[digit] || digit);
 }
 
+export function safeParseDate(date: any): Date | null {
+  if (!date) return null;
+  try {
+    const d = typeof date === "string" ? parseISO(date) : new Date(date);
+    if (!d || isNaN(d.getTime())) return null;
+    return d;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Calculate offset timestamp from target due date
  */
-export function calculateNotificationDate(dueAt: Date, offsetKey: string): Date {
+export function calculateNotificationDate(dueAt: Date | string, offsetKey: string): Date {
+  const d = safeParseDate(dueAt) || new Date();
   switch (offsetKey) {
     case "10_min_before":
-      return subMinutes(dueAt, 10);
+      return subMinutes(d, 10);
     case "30_min_before":
-      return subMinutes(dueAt, 30);
+      return subMinutes(d, 30);
     case "1_hour_before":
-      return subHours(dueAt, 1);
+      return subHours(d, 1);
     case "3_hours_before":
-      return subHours(dueAt, 3);
+      return subHours(d, 3);
     case "1_day_before":
-      return subDays(dueAt, 1);
+      return subDays(d, 1);
     case "3_days_before":
-      return subDays(dueAt, 3);
+      return subDays(d, 3);
     case "1_week_before":
-      return subDays(dueAt, 7);
+      return subDays(d, 7);
     case "at_time":
     default:
-      return new Date(dueAt);
+      return new Date(d);
   }
 }
 
@@ -80,13 +92,14 @@ export function calculateNotificationDate(dueAt: Date, offsetKey: string): Date 
  */
 export function calculateNextOccurrence(
   frequency: string,
-  currentDate: Date,
+  currentDate: Date | string,
   interval: number = 1,
   timeOfDay?: string | null
 ): Date {
-  let nextDate = new Date(currentDate);
+  const validDate = safeParseDate(currentDate) || new Date();
+  let nextDate = new Date(validDate);
 
-  switch (frequency.toUpperCase()) {
+  switch ((frequency || "").toUpperCase()) {
     case "DAILY":
       nextDate = addDays(nextDate, interval || 1);
       break;
@@ -106,7 +119,7 @@ export function calculateNextOccurrence(
       nextDate = addDays(nextDate, 1);
   }
 
-  if (timeOfDay) {
+  if (timeOfDay && typeof timeOfDay === "string") {
     const [hours, minutes] = timeOfDay.split(":").map(Number);
     if (!isNaN(hours) && !isNaN(minutes)) {
       nextDate.setHours(hours, minutes, 0, 0);
@@ -119,25 +132,32 @@ export function calculateNextOccurrence(
 /**
  * Format date for friendly Bangla / English display
  */
-export function formatFriendlyDate(date: Date | string, language: string = "bn"): string {
-  const d = typeof date === "string" ? parseISO(date) : date;
-  const now = new Date();
-  const todayStart = startOfDay(now);
-  const tomorrowStart = addDays(todayStart, 1);
-  const targetDayStart = startOfDay(d);
+export function formatFriendlyDate(date: Date | string | null | undefined, language: string = "bn"): string {
+  if (!date) return language === "bn" ? "নির্ধারিত নয়" : "Not specified";
+  try {
+    const d = safeParseDate(date);
+    if (!d) return language === "bn" ? "নির্ধারিত নয়" : "Not specified";
 
-  const timeStr = format(d, "h:mm a");
+    const now = new Date();
+    const todayStart = startOfDay(now);
+    const tomorrowStart = addDays(todayStart, 1);
+    const targetDayStart = startOfDay(d);
 
-  if (targetDayStart.getTime() === todayStart.getTime()) {
-    return language === "bn" ? `আজ ${timeStr}` : `Today at ${timeStr}`;
-  }
-  if (targetDayStart.getTime() === tomorrowStart.getTime()) {
-    return language === "bn" ? `আগামীকাল ${timeStr}` : `Tomorrow at ${timeStr}`;
-  }
+    const timeStr = format(d, "h:mm a");
 
-  const formattedDate = format(d, "dd MMM yyyy, h:mm a");
-  if (language === "bn") {
-    return toBanglaDigits(formattedDate);
+    if (targetDayStart.getTime() === todayStart.getTime()) {
+      return language === "bn" ? `আজ ${timeStr}` : `Today at ${timeStr}`;
+    }
+    if (targetDayStart.getTime() === tomorrowStart.getTime()) {
+      return language === "bn" ? `আগামীকাল ${timeStr}` : `Tomorrow at ${timeStr}`;
+    }
+
+    const formattedDate = format(d, "dd MMM yyyy, h:mm a");
+    if (language === "bn") {
+      return toBanglaDigits(formattedDate);
+    }
+    return formattedDate;
+  } catch {
+    return language === "bn" ? "নির্ধারিত নয়" : "Not specified";
   }
-  return formattedDate;
 }

@@ -66,7 +66,11 @@ export async function PATCH(req: NextRequest) {
         envContent += `\nGEMINI_API_KEY="${cleanKey}"`;
       }
 
-      await fs.writeFile(envPath, envContent, "utf-8");
+      try {
+        await fs.writeFile(envPath, envContent, "utf-8");
+      } catch {
+        // Ignored on read-only serverless environment
+      }
       process.env.GEMINI_API_KEY = cleanKey;
     }
 

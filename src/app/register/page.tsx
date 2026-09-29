@@ -32,6 +32,10 @@ export default function RegisterPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "নিবন্ধন ব্যর্থ হয়েছে");
 
+      if (data.token && typeof window !== "undefined") {
+        localStorage.setItem("token", data.token);
+      }
+
       await refreshUser();
       router.push("/onboarding");
     } catch (err: any) {

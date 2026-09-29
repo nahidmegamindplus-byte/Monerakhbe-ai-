@@ -29,6 +29,10 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "লগইন ব্যর্থ হয়েছে");
 
+      if (data.token && typeof window !== "undefined") {
+        localStorage.setItem("token", data.token);
+      }
+
       await refreshUser();
       router.push("/dashboard");
     } catch (err: any) {

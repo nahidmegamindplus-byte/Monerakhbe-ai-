@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { getSessionUser, createToken, setTokenCookie } from "@/lib/auth";
+import { getSessionUser, signToken } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -18,14 +18,14 @@ export async function POST(req: NextRequest) {
     });
 
     // Re-issue JWT token with ADMIN role
-    const token = await createToken({
+    const token = signToken({
       id: updatedUser.id,
       email: updatedUser.email,
       name: updatedUser.name,
       role: "ADMIN",
       timezone: updatedUser.timezone,
       language: updatedUser.language,
-      plan: updatedUser.plan,
+      plan: updatedUser.plan as any,
     });
 
     const response = NextResponse.json({
@@ -39,7 +39,15 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return setTokenCookie(response, token);
+    response.cookies.set("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60,
+      path: "/",
+    });
+
+    return response;
   } catch (error: any) {
     console.error("[Promote Admin Error]", error);
     return NextResponse.json({ error: "অ্যাডমিন এক্সেস প্রদানে সমস্যা হয়েছে।" }, { status: 500 });

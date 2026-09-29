@@ -25,6 +25,7 @@ function CheckoutContent() {
 
   const [plans, setPlans] = useState<any[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("PRO");
+  const [billingCycle, setBillingCycle] = useState<"MONTHLY" | "YEARLY">("MONTHLY");
   const [paymentMethodsList, setPaymentMethodsList] = useState<any[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<string>("bkash");
 

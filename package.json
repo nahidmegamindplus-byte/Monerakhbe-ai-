@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma db push --accept-data-loss && node scripts/seed.js && next build",
+    "build": "prisma generate && (prisma db push --accept-data-loss || true) && (node scripts/seed.js || true) && next build",
     "vercel-build": "prisma generate && (prisma db push --accept-data-loss || true) && (node scripts/seed.js || true) && next build",
+    "netlify-build": "prisma generate && (prisma db push --accept-data-loss || true) && (node scripts/seed.js || true) && next build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",

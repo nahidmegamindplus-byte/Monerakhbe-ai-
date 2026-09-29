@@ -2,9 +2,14 @@ import { PrismaClient } from "@prisma/client";
 import fs from "fs";
 import path from "path";
 
-// Vercel Serverless / AWS Lambda SQLite handling
+// Serverless (Vercel, Netlify, AWS Lambda) SQLite handling
 function getDatabaseUrl(): string {
-  const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+  const isServerless = Boolean(
+    process.env.VERCEL || 
+    process.env.NETLIFY || 
+    process.env.AWS_LAMBDA_FUNCTION_NAME || 
+    process.env.LAMBDA_TASK_ROOT
+  );
   const currentUrl = process.env.DATABASE_URL || "file:./dev.db";
 
   if (isServerless && currentUrl.startsWith("file:")) {
@@ -45,7 +50,7 @@ function getDatabaseUrl(): string {
       }
 
       if (!copied) {
-        console.warn("[Prisma Init] No seed DB source found. Prisma will connect to /tmp/dev.db directly.");
+        console.warn("[Prisma Init] No pre-seeded SQLite DB found in candidates. Connecting to /tmp/dev.db directly.");
       }
     }
 

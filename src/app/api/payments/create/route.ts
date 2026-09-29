@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
+import prisma from "@/lib/prisma";
 import { paymentService } from "@/services/payment/paymentService";
 
 export async function POST(req: NextRequest) {
@@ -13,11 +14,21 @@ export async function POST(req: NextRequest) {
     const { planId, billingCycle = "MONTHLY", paymentMethod, couponCode } = body;
 
     if (!planId || !paymentMethod) {
-      return NextResponse.json({ error: "Plan and payment method are required" }, { status: 400 });
+      return NextResponse.json({ error: "প্ল্যান এবং পেমেন্ট মেথড নির্বাচন করুন" }, { status: 400 });
     }
 
-    if (!["bkash", "nagad", "rocket"].includes(paymentMethod.toLowerCase())) {
-      return NextResponse.json({ error: "Invalid payment method. Choose bKash, Nagad or Rocket." }, { status: 400 });
+    const cleanMethod = String(paymentMethod).trim().toLowerCase();
+
+    // Verify method is configured in database or is standard method
+    const methodConfig = await prisma.paymentMethodConfig.findFirst({
+      where: {
+        code: cleanMethod,
+        isActive: true,
+      },
+    });
+
+    if (!methodConfig && !["bkash", "nagad", "rocket"].includes(cleanMethod)) {
+      return NextResponse.json({ error: "নির্বাচিত পেমেন্ট মেথডটি বর্তমানে সক্রিয় নয়।" }, { status: 400 });
     }
 
     const origin = req.headers.get("origin") || req.nextUrl.origin || "http://localhost:3000";
@@ -26,7 +37,7 @@ export async function POST(req: NextRequest) {
       userId: session.id,
       planId,
       billingCycle,
-      paymentMethod,
+      paymentMethod: cleanMethod as any,
       couponCode,
       callbackBaseUrl: origin,
     });
@@ -48,6 +59,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("[Payment Create Error]", error);
-    return NextResponse.json({ error: error.message || "Failed to initiate payment" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "পেমেন্ট শুরু করতে ত্রুটি হয়েছে" }, { status: 500 });
   }
 }

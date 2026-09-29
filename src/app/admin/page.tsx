@@ -56,6 +56,7 @@ import { format } from "date-fns";
 type TabType =
   | "overview"
   | "payments"
+  | "paymentMethods"
   | "plans"
   | "users"
   | "reminders"
@@ -93,13 +94,29 @@ export default function AdminPage() {
   const [subscriptionsList, setSubscriptionsList] = useState<any[]>([]);
   const [systemTelemetry, setSystemTelemetry] = useState<any>(null);
 
-  // Payments & Plans States
+  // Payments, Payment Methods & Plans States
   const [ordersList, setOrdersList] = useState<any[]>([]);
   const [paymentAnalytics, setPaymentAnalytics] = useState<any>(null);
   const [plansList, setPlansList] = useState<any[]>([]);
   const [editingPlan, setEditingPlan] = useState<any | null>(null);
   const [planModalOpen, setPlanModalOpen] = useState(false);
   const [planFormData, setPlanFormData] = useState<any>({});
+
+  // Dynamic Payment Methods States
+  const [paymentMethodsAdminList, setPaymentMethodsAdminList] = useState<any[]>([]);
+  const [editingPaymentMethod, setEditingPaymentMethod] = useState<any | null>(null);
+  const [paymentMethodModalOpen, setPaymentMethodModalOpen] = useState(false);
+  const [paymentMethodFormData, setPaymentMethodFormData] = useState({
+    name: "",
+    code: "",
+    type: "WALLET",
+    accountNumber: "",
+    accountType: "Personal",
+    instructions: "",
+    chargePercent: 0,
+    isActive: true,
+    displayOrder: 0,
+  });
 
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState("");
@@ -175,7 +192,7 @@ export default function AdminPage() {
 
   const [deleteConfirm, setDeleteConfirm] = useState<{
     open: boolean;
-    type: "user" | "reminder" | "memory" | "task" | "subscription" | "notification" | "order" | "plan";
+    type: "user" | "reminder" | "memory" | "task" | "subscription" | "notification" | "order" | "plan" | "paymentMethod";
     id: string;
     title: string;
   }>({ open: false, type: "user", id: "", title: "" });
@@ -212,6 +229,16 @@ export default function AdminPage() {
         setOrdersList(json.orders);
         setPaymentAnalytics(json.analytics);
       }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchPaymentMethodsAdmin = async () => {
+    try {
+      const res = await fetch("/api/admin/payment-methods");
+      const json = await res.json();
+      if (json.success) setPaymentMethodsAdminList(json.paymentMethods);
     } catch (err) {
       console.error(err);
     }
@@ -333,6 +360,7 @@ export default function AdminPage() {
   const refreshCurrentTab = () => {
     if (activeTab === "overview") fetchOverview();
     else if (activeTab === "payments") fetchPayments();
+    else if (activeTab === "paymentMethods") fetchPaymentMethodsAdmin();
     else if (activeTab === "plans") fetchPlans();
     else if (activeTab === "users") fetchUsers();
     else if (activeTab === "reminders") fetchReminders();
@@ -397,7 +425,7 @@ export default function AdminPage() {
     if (!loading) {
       if (user?.role === "ADMIN") {
         setFetching(true);
-        Promise.all([fetchOverview(), fetchUsers(), fetchPayments()]).finally(() => {
+        Promise.all([fetchOverview(), fetchUsers(), fetchPayments(), fetchPaymentMethodsAdmin()]).finally(() => {
           setFetching(false);
         });
       } else {
@@ -559,6 +587,61 @@ export default function AdminPage() {
       type: "plan",
       id: planId,
       title: `প্যাকেজ "${planName} (${planId})"`,
+    });
+  };
+
+  // Payment Method Save Handler (Create & Update)
+  const handleSavePaymentMethod = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const isNew = !editingPaymentMethod;
+      const res = await fetch("/api/admin/payment-methods", {
+        method: isNew ? "POST" : "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isNew ? paymentMethodFormData : { id: editingPaymentMethod.id, ...paymentMethodFormData }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        notify(isNew ? "নতুন পেমেন্ট মেথড ও নাম্বার সফলভাবে যোগ করা হয়েছে!" : "পেমেন্ট মেথড সফলভাবে আপডেট করা হয়েছে!");
+        setEditingPaymentMethod(null);
+        setPaymentMethodModalOpen(false);
+        fetchPaymentMethodsAdmin();
+      } else {
+        notify(json.error || "পেমেন্ট মেথড সংরক্ষণে সমস্যা হয়েছে", "error");
+      }
+    } catch (err: any) {
+      notify(err.message || "ত্রুটি ঘটেছে", "error");
+    }
+  };
+
+  // Payment Method Quick Active/Inactive Toggle
+  const handleTogglePaymentMethodActive = async (method: any) => {
+    try {
+      const nextState = !method.isActive;
+      const res = await fetch("/api/admin/payment-methods", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: method.id, isActive: nextState }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        notify(`পেমেন্ট মেথড '${method.name}' এখন ${nextState ? "সক্রিয় (Active)" : "নিষ্ক্রিয় (Inactive)"}!`);
+        fetchPaymentMethodsAdmin();
+      } else {
+        notify(json.error || "স্ট্যাটাস পরিবর্তন ব্যর্থ হয়েছে", "error");
+      }
+    } catch (err: any) {
+      notify(err.message || "ত্রুটি ঘটেছে", "error");
+    }
+  };
+
+  // Payment Method Delete Trigger
+  const handleDeletePaymentMethod = (method: any) => {
+    setDeleteConfirm({
+      open: true,
+      type: "paymentMethod",
+      id: method.id,
+      title: `পেমেন্ট মেথড "${method.name} (${method.accountNumber})"`,
     });
   };
 
@@ -778,6 +861,24 @@ export default function AdminPage() {
           return;
         }
       }
+
+      if (deleteConfirm.type === "paymentMethod") {
+        const res = await fetch(`/api/admin/payment-methods?id=${deleteConfirm.id}`, {
+          method: "DELETE",
+        });
+        const json = await res.json();
+        if (json.success) {
+          notify(json.message || "পেমেন্ট মেথড সফলভাবে মুছে ফেলা হয়েছে!");
+          setDeleteConfirm({ open: false, type: "user", id: "", title: "" });
+          fetchPaymentMethodsAdmin();
+          return;
+        } else {
+          notify(json.error || "পেমেন্ট মেথড মুছতে সমস্যা হয়েছে", "error");
+          setDeleteConfirm({ open: false, type: "user", id: "", title: "" });
+          return;
+        }
+      }
+
       let endpoint = "";
       if (deleteConfirm.type === "user") endpoint = `/api/admin/users?id=${deleteConfirm.id}`;
       else if (deleteConfirm.type === "reminder") endpoint = `/api/admin/reminders?id=${deleteConfirm.id}`;
@@ -877,6 +978,7 @@ export default function AdminPage() {
       title: "পেমেন্ট ও ফাইন্যান্স (Bangladesh Payments)",
       items: [
         { id: "payments", label: "পেমেন্টস ও অর্ডার ট্র্যাকিং", icon: Wallet, badge: paymentAnalytics?.totalPaidCount ? `৳${paymentAnalytics.totalRevenue}` : null },
+        { id: "paymentMethods", label: "পেমেন্ট মেথড ও নাম্বার", icon: CreditCard, badge: paymentMethodsAdminList.length ? `${paymentMethodsAdminList.length} মেথড` : "Config" },
         { id: "plans", label: "SaaS প্ল্যান ও প্রাইসিং", icon: BadgePercent, badge: "Config" },
         { id: "subscriptions", label: "ইউজার সাবস্ক্রিপশন", icon: CreditCard, badge: data?.stats?.activeSubscriptions || null },
       ],
@@ -1467,6 +1569,179 @@ export default function AdminPage() {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ----------------- TAB: PAYMENT METHODS & MERCHANT NUMBERS ----------------- */}
+          {activeTab === "paymentMethods" && (
+            <div className="space-y-6">
+              {/* Header Banner */}
+              <div className="p-6 rounded-3xl bg-white border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <Wallet className="w-5 h-5 text-rose-600 font-bold" />
+                    <span>পেমেন্ট মেথড ও মার্চেন্ট একাউন্ট কন্ট্রোল (Payment Gateways)</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    অ্যাডমিন প্যানেল থেকে বিকাশ, নগদ, রকেট সহ সকল পেমেন্ট নম্বর, পার্সোনাল/মার্চেন্ট ধরন এবং নির্দেশনা কনফিগার করুন
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingPaymentMethod(null);
+                    setPaymentMethodFormData({
+                      name: "",
+                      code: "",
+                      type: "WALLET",
+                      accountNumber: "",
+                      accountType: "Personal",
+                      instructions: "১. আপনার অ্যাপ থেকে সেন্ড মানি করুন।\n২. নির্ধারিত বিকাশ/নগদ নাম্বারে টাকা পাঠান।\n৩. ট্রানজেকশন আইডি দিয়ে সাবমিট করুন।",
+                      chargePercent: 0,
+                      isActive: true,
+                      displayOrder: paymentMethodsAdminList.length + 1,
+                    });
+                    setPaymentMethodModalOpen(true);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-md shadow-rose-600/20 flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>নতুন পেমেন্ট মেথড যোগ করুন</span>
+                </button>
+              </div>
+
+              {/* Methods Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {paymentMethodsAdminList.length === 0 ? (
+                  <div className="col-span-full p-12 bg-white rounded-3xl border border-slate-200 text-center space-y-3">
+                    <Wallet className="w-10 h-10 text-slate-300 mx-auto" />
+                    <p className="text-sm font-bold text-slate-700">কোনো পেমেন্ট মেথড পাওয়া যায়নি</p>
+                    <p className="text-xs text-slate-400">নতুন পেমেন্ট মেথড ও নাম্বার যোগ করতে উপরের বাটনে ক্লিক করুন।</p>
+                  </div>
+                ) : (
+                  paymentMethodsAdminList.map((m) => {
+                    const isBkash = m.code?.toLowerCase() === "bkash";
+                    const isNagad = m.code?.toLowerCase() === "nagad";
+                    const isRocket = m.code?.toLowerCase() === "rocket";
+
+                    const badgeColor = isBkash
+                      ? "bg-pink-100 text-pink-800 border-pink-200"
+                      : isNagad
+                      ? "bg-amber-100 text-amber-800 border-amber-200"
+                      : isRocket
+                      ? "bg-purple-100 text-purple-800 border-purple-200"
+                      : "bg-indigo-100 text-indigo-800 border-indigo-200";
+
+                    return (
+                      <div
+                        key={m.id}
+                        className={`p-5 rounded-3xl bg-white border transition-all flex flex-col justify-between space-y-4 shadow-sm ${
+                          m.isActive ? "border-slate-200 hover:border-slate-300" : "border-rose-200 bg-rose-50/20 opacity-75"
+                        }`}
+                      >
+                        <div className="space-y-3">
+                          {/* Method Header */}
+                          <div className="flex items-start justify-between">
+                            <div className="space-y-0.5">
+                              <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black border ${badgeColor}`}>
+                                {m.code?.toUpperCase()}
+                              </span>
+                              <h4 className="text-base font-black text-slate-900 pt-1">{m.name}</h4>
+                            </div>
+
+                            {/* Active Switch Toggle */}
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePaymentMethodActive(m)}
+                              className={`px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 transition-all ${
+                                m.isActive
+                                  ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300"
+                                  : "bg-slate-200 text-slate-700 hover:bg-slate-300 border border-slate-300"
+                              }`}
+                              title={m.isActive ? "নিষ্ক্রিয় করতে ক্লিক করুন" : "সক্রিয় করতে ক্লিক করুন"}
+                            >
+                              <span className={`w-2 h-2 rounded-full ${m.isActive ? "bg-emerald-600 animate-pulse" : "bg-slate-500"}`}></span>
+                              <span>{m.isActive ? "সক্রিয় (Active)" : "নিষ্ক্রিয় (Off)"}</span>
+                            </button>
+                          </div>
+
+                          {/* Account Number Box */}
+                          <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-slate-500 font-semibold">একাউন্ট / মার্চেন্ট নম্বর:</span>
+                              <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-extrabold text-[10px]">
+                                {m.accountType || "Personal"}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="font-mono text-base font-black text-slate-900">{m.accountNumber}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(m.accountNumber);
+                                  notify(`নম্বর '${m.accountNumber}' কপি হয়েছে!`);
+                                }}
+                                className="p-1.5 rounded-lg bg-white hover:bg-slate-200 text-slate-700 border border-slate-200"
+                                title="নম্বর কপি করুন"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Extra info */}
+                          <div className="space-y-1 text-xs text-slate-600">
+                            {m.chargePercent > 0 && (
+                              <p className="text-[11px] text-amber-700 font-bold">
+                                ⚡ অতিরিক্ত চার্জ: {m.chargePercent}%
+                              </p>
+                            )}
+                            <div className="text-[11px] text-slate-500 line-clamp-2 bg-slate-50/60 p-2 rounded-xl border border-slate-100 whitespace-pre-line">
+                              {m.instructions || "কোনো নির্দেশনাবলী যুক্ত করা নেই"}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingPaymentMethod(m);
+                              setPaymentMethodFormData({
+                                name: m.name,
+                                code: m.code,
+                                type: m.type || "WALLET",
+                                accountNumber: m.accountNumber,
+                                accountType: m.accountType || "Personal",
+                                instructions: m.instructions || "",
+                                chargePercent: m.chargePercent || 0,
+                                isActive: m.isActive,
+                                displayOrder: m.displayOrder || 0,
+                              });
+                              setPaymentMethodModalOpen(true);
+                            }}
+                            className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>এডিট নম্বর ও তথ্য</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePaymentMethod(m)}
+                            className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition-all"
+                            title="মেথড মুছে ফেলুন"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           )}
@@ -3556,6 +3831,159 @@ export default function AdminPage() {
                   className="px-6 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-md shadow-emerald-600/20"
                 >
                   সাবস্ক্রিপশন চালু করুন
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== MODAL: PAYMENT METHOD ADD/EDIT ===================== */}
+      {paymentMethodModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-rose-50 text-rose-600">
+                  <Wallet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    {editingPaymentMethod ? "পেমেন্ট মেথড ও নাম্বার সম্পাদনা" : "নতুন পেমেন্ট মেথড যোগ করুন"}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">গ্রাহক চেকআউট ও গেটওয়েতে এই নম্বর ও নির্দেশনা দেখতে পাবে</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaymentMethodModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePaymentMethod} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">পেমেন্ট মেথডের নাম *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="যেমন: বিকাশ (bKash) বা নগদ"
+                    value={paymentMethodFormData.name}
+                    onChange={(e) => setPaymentMethodFormData({ ...paymentMethodFormData, name: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">মেথড কোড (System Code) *</label>
+                  <input
+                    type="text"
+                    required
+                    disabled={!!editingPaymentMethod}
+                    placeholder="যেমন: bkash, nagad, rocket, upay"
+                    value={paymentMethodFormData.code}
+                    onChange={(e) => setPaymentMethodFormData({ ...paymentMethodFormData, code: e.target.value.toLowerCase() })}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 disabled:bg-slate-100 disabled:text-slate-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">একাউন্ট / মার্চেন্ট নম্বর *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="যেমন: 01886123456"
+                    value={paymentMethodFormData.accountNumber}
+                    onChange={(e) => setPaymentMethodFormData({ ...paymentMethodFormData, accountNumber: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">একাউন্টের ধরন (Account Type)</label>
+                  <select
+                    value={paymentMethodFormData.accountType}
+                    onChange={(e) => setPaymentMethodFormData({ ...paymentMethodFormData, accountType: e.target.value })}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                  >
+                    <option value="Personal">Personal (সেন্ড মানি)</option>
+                    <option value="Merchant">Merchant (পেমেন্ট)</option>
+                    <option value="Agent">Agent (ক্যাশ ইন)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 mb-1 font-bold">
+                  পেমেন্ট নির্দেশনাবলী (Bangla Instructions)
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="গ্রাহক পেমেন্ট পাঠানোর জন্য যে নিয়ম দেখবে..."
+                  value={paymentMethodFormData.instructions}
+                  onChange={(e) => setPaymentMethodFormData({ ...paymentMethodFormData, instructions: e.target.value })}
+                  className="w-full bg-white border border-slate-300 rounded-xl p-3 text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 leading-relaxed font-sans"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">অতিরিক্ত চার্জ %</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    placeholder="0"
+                    value={paymentMethodFormData.chargePercent}
+                    onChange={(e) => setPaymentMethodFormData({ ...paymentMethodFormData, chargePercent: parseFloat(e.target.value || "0") })}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">ডিসপ্লে ক্রম (Order)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="1"
+                    value={paymentMethodFormData.displayOrder}
+                    onChange={(e) => setPaymentMethodFormData({ ...paymentMethodFormData, displayOrder: parseInt(e.target.value || "0", 10) })}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+                <input
+                  type="checkbox"
+                  id="isActiveToggle"
+                  checked={paymentMethodFormData.isActive}
+                  onChange={(e) => setPaymentMethodFormData({ ...paymentMethodFormData, isActive: e.target.checked })}
+                  className="w-4 h-4 text-rose-600 rounded focus:ring-rose-500"
+                />
+                <label htmlFor="isActiveToggle" className="text-slate-800 font-bold cursor-pointer select-none">
+                  চেকআউটে সক্রিয় রাখুন (Enable for customers)
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethodModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-all"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black shadow-md shadow-rose-600/20 transition-all hover:scale-105 active:scale-95"
+                >
+                  {editingPaymentMethod ? "আপডেট সংরক্ষণ করুন" : "পেমেন্ট মেথড তৈরি করুন"}
                 </button>
               </div>
             </form>

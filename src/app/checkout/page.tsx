@@ -25,8 +25,8 @@ function CheckoutContent() {
 
   const [plans, setPlans] = useState<any[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>("PRO");
-  const [billingCycle, setBillingCycle] = useState<"MONTHLY" | "YEARLY">("MONTHLY");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>("bkash");
+  const [paymentMethodsList, setPaymentMethodsList] = useState<any[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState<string>("bkash");
 
   // Coupon state
   const [couponInput, setCouponInput] = useState("");
@@ -58,6 +58,29 @@ function CheckoutContent() {
         }
       })
       .catch((err) => console.error(err));
+
+    fetch("/api/payment-methods")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.paymentMethods) && data.paymentMethods.length > 0) {
+          setPaymentMethodsList(data.paymentMethods);
+          setPaymentMethod(data.paymentMethods[0].code);
+        } else {
+          // Fallback defaults
+          setPaymentMethodsList([
+            { code: "bkash", name: "বিকাশ (bKash)" },
+            { code: "nagad", name: "নগদ (Nagad)" },
+            { code: "rocket", name: "রকেট (Rocket)" },
+          ]);
+        }
+      })
+      .catch(() => {
+        setPaymentMethodsList([
+          { code: "bkash", name: "বিকাশ (bKash)" },
+          { code: "nagad", name: "নগদ (Nagad)" },
+          { code: "rocket", name: "রকেট (Rocket)" },
+        ]);
+      });
   }, []);
 
   const selectedPlan = plans.find((p) => p.id === selectedPlanId) || {
@@ -279,74 +302,54 @@ function CheckoutContent() {
               </h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* bKash */}
-                <div
-                  onClick={() => setPaymentMethod("bkash")}
-                  className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between space-y-3 ${
-                    paymentMethod === "bkash"
-                      ? "bg-pink-50/70 border-pink-500 ring-1 ring-pink-500 shadow-sm"
-                      : "bg-white border-slate-200 hover:border-slate-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-pink-700">বিকাশ (bKash)</span>
-                    <input
-                      type="radio"
-                      checked={paymentMethod === "bkash"}
-                      onChange={() => setPaymentMethod("bkash")}
-                      className="accent-pink-600"
-                    />
-                  </div>
-                  <div className="p-2 rounded-xl bg-pink-100 text-pink-800 text-[11px] font-bold text-center">
-                    Pay with bKash
-                  </div>
-                </div>
+                {paymentMethodsList.map((method) => {
+                  const isSelected = paymentMethod === method.code;
+                  const isBkash = method.code === "bkash";
+                  const isNagad = method.code === "nagad";
+                  const isRocket = method.code === "rocket";
 
-                {/* Nagad */}
-                <div
-                  onClick={() => setPaymentMethod("nagad")}
-                  className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between space-y-3 ${
-                    paymentMethod === "nagad"
-                      ? "bg-amber-50/70 border-amber-500 ring-1 ring-amber-500 shadow-sm"
-                      : "bg-white border-slate-200 hover:border-slate-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-amber-700">নগদ (Nagad)</span>
-                    <input
-                      type="radio"
-                      checked={paymentMethod === "nagad"}
-                      onChange={() => setPaymentMethod("nagad")}
-                      className="accent-amber-600"
-                    />
-                  </div>
-                  <div className="p-2 rounded-xl bg-amber-100 text-amber-800 text-[11px] font-bold text-center">
-                    Pay with Nagad
-                  </div>
-                </div>
+                  const activeColor = isBkash
+                    ? "bg-pink-50/70 border-pink-500 ring-1 ring-pink-500 text-pink-700"
+                    : isNagad
+                    ? "bg-amber-50/70 border-amber-500 ring-1 ring-amber-500 text-amber-700"
+                    : isRocket
+                    ? "bg-purple-50/70 border-purple-500 ring-1 ring-purple-500 text-purple-700"
+                    : "bg-indigo-50/70 border-indigo-500 ring-1 ring-indigo-500 text-indigo-700";
 
-                {/* Rocket */}
-                <div
-                  onClick={() => setPaymentMethod("rocket")}
-                  className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between space-y-3 ${
-                    paymentMethod === "rocket"
-                      ? "bg-purple-50/70 border-purple-500 ring-1 ring-purple-500 shadow-sm"
-                      : "bg-white border-slate-200 hover:border-slate-300"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-purple-700">রকেট (Rocket)</span>
-                    <input
-                      type="radio"
-                      checked={paymentMethod === "rocket"}
-                      onChange={() => setPaymentMethod("rocket")}
-                      className="accent-purple-600"
-                    />
-                  </div>
-                  <div className="p-2 rounded-xl bg-purple-100 text-purple-800 text-[11px] font-bold text-center">
-                    Pay with Rocket
-                  </div>
-                </div>
+                  const badgeBg = isBkash
+                    ? "bg-pink-100 text-pink-800"
+                    : isNagad
+                    ? "bg-amber-100 text-amber-800"
+                    : isRocket
+                    ? "bg-purple-100 text-purple-800"
+                    : "bg-indigo-100 text-indigo-800";
+
+                  return (
+                    <div
+                      key={method.code}
+                      onClick={() => setPaymentMethod(method.code)}
+                      className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between space-y-3 ${
+                        isSelected
+                          ? activeColor
+                          : "bg-white border-slate-200 hover:border-slate-300 text-slate-800"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black">{method.name || method.code}</span>
+                        <input
+                          type="radio"
+                          name="checkoutPaymentMethod"
+                          checked={isSelected}
+                          onChange={() => setPaymentMethod(method.code)}
+                          className="accent-indigo-600"
+                        />
+                      </div>
+                      <div className={`p-2 rounded-xl text-[11px] font-bold text-center ${badgeBg}`}>
+                        Pay with {method.name || method.code}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

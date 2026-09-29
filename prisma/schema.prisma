@@ -442,3 +442,22 @@ model Invoice {
   @@index([userId])
   @@map("invoices")
 }
+
+model PaymentMethodConfig {
+  id            String   @id @default(uuid())
+  code          String   @unique // e.g. bkash, nagad, rocket, upay, bank
+  name          String   // e.g. বিকাশ (bKash), নগদ (Nagad), রকেট (Rocket)
+  type          String   @default("WALLET") // WALLET, BANK, MANUAL
+  accountNumber String   // e.g. 01886123456
+  accountType   String   @default("Personal") // Personal, Merchant, Agent
+  instructions  String?  // Instructions in Bangla
+  qrCodeUrl     String?  // Optional QR Code URL
+  chargePercent Float    @default(0)
+  isActive      Boolean  @default(true)
+  displayOrder  Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("payment_method_configs")
+}
+

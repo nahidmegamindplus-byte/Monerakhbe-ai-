@@ -41,27 +41,64 @@ function GatewayContent() {
   const [otp, setOtp] = useState("123456");
   const [pin, setPin] = useState("12345");
 
+  // Payment Method Config from Database
+  const [methodConfig, setMethodConfig] = useState<any | null>(null);
+
   // Loading & Error states
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+    // Fetch active payment methods from DB
+    fetch("/api/payment-methods")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.paymentMethods)) {
+          const match = data.paymentMethods.find(
+            (m: any) => m.code?.toLowerCase() === provider.toLowerCase()
+          );
+          if (match) {
+            setMethodConfig(match);
+          }
+        }
+      })
+      .catch((err) => console.error("Error fetching payment methods:", err));
+  }, [provider]);
 
   const isBkash = provider === "bkash";
   const isNagad = provider === "nagad";
   const isRocket = provider === "rocket";
 
-  const brandColor = isBkash ? "bg-[#e2136e]" : isNagad ? "bg-[#f7941d]" : "bg-[#8c3494]";
-  const brandName = isBkash ? "বিকাশ (bKash)" : isNagad ? "নগদ (Nagad)" : "রকেট (Rocket)";
-
-  // Official Merchant Number for User to Send Money / Payment
-  const merchantNumber = isBkash
-    ? "01886123456"
+  const brandColor = isBkash
+    ? "bg-[#e2136e]"
     : isNagad
-    ? "01991234567"
-    : "01711234567-8";
+    ? "bg-[#f7941d]"
+    : isRocket
+    ? "bg-[#8c3494]"
+    : "bg-indigo-700";
+
+  const brandName =
+    methodConfig?.name ||
+    (isBkash
+      ? "বিকাশ (bKash)"
+      : isNagad
+      ? "নগদ (Nagad)"
+      : isRocket
+      ? "রকেট (Rocket)"
+      : provider.toUpperCase());
+
+  // Dynamic Merchant / Wallet Number from Admin Config
+  const merchantNumber =
+    methodConfig?.accountNumber ||
+    (isBkash
+      ? "01886123456"
+      : isNagad
+      ? "01991234567"
+      : "01711234567-8");
+
+  const accountType = methodConfig?.accountType || "Personal";
+  const customInstructions = methodConfig?.instructions;
 
   const copyMerchantNumber = () => {
     navigator.clipboard.writeText(merchantNumber);
@@ -210,20 +247,29 @@ function GatewayContent() {
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 text-xs">
                 <div className="flex items-center justify-between text-slate-800 font-bold border-b border-slate-200 pb-2">
                   <span>পেমেন্ট পাঠানোর নিয়ম:</span>
-                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">
-                    Payment / Send Money
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full font-extrabold uppercase">
+                    {accountType} ({accountType === "Merchant" ? "Payment" : "Send Money"})
                   </span>
                 </div>
                 
-                <ol className="list-decimal list-inside space-y-1 text-slate-600 text-[11px] leading-relaxed">
-                  <li>আপনার {brandName} অ্যাপ বা ডায়াল করে <strong>৳{amount}</strong> টাকা পাঠান।</li>
-                  <li>নিচের মার্চেন্ট নম্বরে পেমেন্ট করুন:</li>
-                </ol>
+                {customInstructions ? (
+                  <div className="whitespace-pre-line text-slate-700 text-[11px] leading-relaxed bg-white/70 p-2.5 rounded-xl border border-slate-200/60 font-medium">
+                    {customInstructions}
+                  </div>
+                ) : (
+                  <ol className="list-decimal list-inside space-y-1 text-slate-600 text-[11px] leading-relaxed">
+                    <li>আপনার {brandName} অ্যাপ বা ডায়াল করে <strong>৳{amount}</strong> টাকা পাঠান।</li>
+                    <li>নিচের একাউন্ট নম্বরে {accountType === "Merchant" ? "Payment" : "Send Money"} করুন:</li>
+                  </ol>
+                )}
 
                 <div className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-300">
                   <div className="flex items-center gap-2">
                     <Phone className="w-4 h-4 text-emerald-600" />
-                    <span className="font-mono text-sm font-black text-slate-900">{merchantNumber}</span>
+                    <div>
+                      <span className="font-mono text-sm font-black text-slate-900">{merchantNumber}</span>
+                      <span className="text-[10px] text-slate-500 ml-2 font-medium">({accountType})</span>
+                    </div>
                   </div>
                   <button
                     type="button"

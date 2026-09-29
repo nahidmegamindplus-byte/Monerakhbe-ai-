@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { processDueNotifications } from "@/services/scheduler/worker";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");

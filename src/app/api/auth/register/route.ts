@@ -3,6 +3,8 @@ import prisma from "@/lib/prisma";
 import { hashPassword, signToken } from "@/lib/auth";
 import crypto from "crypto";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   try {
     const { name, email, password, timezone, language } = await req.json();

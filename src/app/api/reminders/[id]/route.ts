@@ -4,6 +4,8 @@ import { getSessionUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { addHours, addDays } from "date-fns";
 
+export const dynamic = "force-dynamic";
+
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await getSessionUser(req);

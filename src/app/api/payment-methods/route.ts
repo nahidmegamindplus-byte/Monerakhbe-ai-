@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/payment-methods - Public active payment methods for checkout & gateway
 export async function GET(req: NextRequest) {
   try {

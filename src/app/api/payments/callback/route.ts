@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { paymentService } from "@/services/payment/paymentService";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   return handleCallback(req);
 }

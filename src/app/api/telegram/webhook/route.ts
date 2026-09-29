@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { handleTelegramUpdate } from "@/services/telegram/handlers";
 import { TelegramWebhookUpdate } from "@/types";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   try {
     const secretHeader = req.headers.get("x-telegram-bot-api-secret-token");

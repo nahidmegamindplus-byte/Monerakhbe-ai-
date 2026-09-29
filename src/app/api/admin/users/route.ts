@@ -3,6 +3,8 @@ import prisma from "@/lib/prisma";
 import { getSessionUser, hashPassword } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/admin/users - Search, filter, and paginate users
 export async function GET(req: NextRequest) {
   try {

@@ -4,6 +4,8 @@ import { getSessionUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { paymentService } from "@/services/payment/paymentService";
 
+export const dynamic = "force-dynamic";
+
 // GET /api/admin/payments - List orders, transactions, and revenue analytics
 export async function GET(req: NextRequest) {
   try {

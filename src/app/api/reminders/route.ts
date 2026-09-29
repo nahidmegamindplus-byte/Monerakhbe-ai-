@@ -5,6 +5,8 @@ import { calculateNotificationDate } from "@/lib/date-utils";
 import { logAudit } from "@/lib/audit";
 import { startOfDay, endOfDay, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const session = await getSessionUser(req);

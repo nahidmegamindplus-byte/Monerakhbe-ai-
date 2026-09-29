@@ -3,6 +3,8 @@ import prisma from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { formatFriendlyDate } from "@/lib/date-utils";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }

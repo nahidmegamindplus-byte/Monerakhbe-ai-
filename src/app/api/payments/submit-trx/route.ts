@@ -3,6 +3,8 @@ import { getSessionUser } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 
+export const dynamic = "force-dynamic";
+
 // POST /api/payments/submit-trx
 export async function POST(req: NextRequest) {
   try {

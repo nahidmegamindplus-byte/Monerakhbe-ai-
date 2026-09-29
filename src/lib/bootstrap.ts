@@ -62,8 +62,8 @@ export async function ensureDefaultSystemData() {
         data: [
           {
             id: "FREE",
-            name: "বেসিক (ফ্রি)",
-            description: "দৈনন্দিন ব্যক্তিগত সাধারণ রিমাইন্ডার ও মেমোরি সংরক্ষণ",
+            name: "Free Basic",
+            description: "ব্যক্তিগত সাধারণ কাজের জন্য আজীবন ফ্রি ব্যবহার করুন",
             monthlyPrice: 0,
             yearlyPrice: 0,
             currency: "BDT",
@@ -78,32 +78,32 @@ export async function ensureDefaultSystemData() {
           },
           {
             id: "PRO",
-            name: "প্রো মেম্বারশিপ",
-            description: "আনলিমিটেড এআই রিমাইন্ডার, স্মার্ট ভয়েস এবং রিকারিং শিডিউল",
-            monthlyPrice: 199,
-            yearlyPrice: 1990,
+            name: "Pro Personal",
+            description: "প্রফেশনাল ও ফ্রিল্যান্সারদের জন্য স্মার্ট মেমোরি ও এআই রিমাইন্ডার",
+            monthlyPrice: 499,
+            yearlyPrice: 4990,
             currency: "BDT",
-            memoryLimit: 500,
-            reminderLimit: 1000,
-            taskLimit: 1000,
-            aiLimit: 2000,
-            fileSizeLimit: 25,
+            memoryLimit: 1000,
+            reminderLimit: 2000,
+            taskLimit: 2000,
+            aiLimit: 1500,
+            fileSizeLimit: 50,
             telegramEnabled: true,
             advancedFeatures: true,
             isActive: true,
           },
           {
             id: "BUSINESS",
-            name: "বিজনেস ও আলটিমেট",
-            description: "সম্পূর্ণ আনলিমিটেড মেমোরি, সর্বোচ্চ অগ্রাধিকার ও কাস্টম অ্যাসিস্ট্যান্ট",
-            monthlyPrice: 499,
-            yearlyPrice: 4990,
+            name: "Business Pro",
+            description: "উদ্যোক্তা ও টিমের জন্য সীমাহীন মেমোরি ও সর্বোচ্চ প্রায়োরিটি বট",
+            monthlyPrice: 999,
+            yearlyPrice: 9990,
             currency: "BDT",
-            memoryLimit: 5000,
-            reminderLimit: 10000,
-            taskLimit: 10000,
+            memoryLimit: 10000,
+            reminderLimit: 20000,
+            taskLimit: 20000,
             aiLimit: 10000,
-            fileSizeLimit: 100,
+            fileSizeLimit: 200,
             telegramEnabled: true,
             advancedFeatures: true,
             isActive: true,
@@ -154,6 +154,34 @@ export async function ensureDefaultSystemData() {
         ],
       });
       console.log("[Bootstrap] Seeded default payment methods.");
+    }
+
+    // 3. Ensure Coupons
+    const couponCount = await prisma.coupon.count();
+    if (couponCount === 0) {
+      await prisma.coupon.createMany({
+        data: [
+          {
+            code: "LAUNCH20",
+            type: "PERCENTAGE",
+            value: 20,
+            maxUses: 500,
+            usedCount: 0,
+            minOrderAmount: 400,
+            active: true,
+          },
+          {
+            code: "SAVE100",
+            type: "FIXED_AMOUNT",
+            value: 100,
+            maxUses: 200,
+            usedCount: 0,
+            minOrderAmount: 499,
+            active: true,
+          },
+        ],
+      });
+      console.log("[Bootstrap] Seeded default coupons.");
     }
   } catch (error) {
     console.error("[Bootstrap Error: ensureDefaultSystemData]", error);

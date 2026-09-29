@@ -4,9 +4,10 @@ import path from "path";
 
 // Vercel Serverless / AWS Lambda SQLite handling
 function setupVercelDatabase() {
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+  if (isServerless) {
     const dbUrl = process.env.DATABASE_URL || "file:./dev.db";
-    if (dbUrl.startsWith("file:")) {
+    if (!dbUrl || dbUrl.startsWith("file:")) {
       const tmpDbPath = "/tmp/dev.db";
       if (!fs.existsSync(tmpDbPath)) {
         const potentialSources = [
@@ -35,19 +36,19 @@ function setupVercelDatabase() {
 
 setupVercelDatabase();
 
-declare global {
-  // eslint-disable-next-line no-var
-  var prisma: PrismaClient | undefined;
-}
-
-export const prisma =
-  globalThis.prisma ||
-  new PrismaClient({
+const prismaClientSingleton = () => {
+  return new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
+};
 
-if (process.env.NODE_ENV !== "production") {
-  globalThis.prisma = prisma;
+declare global {
+  // eslint-disable-next-line no-var
+  var prisma: undefined | ReturnType<typeof prismaClientSingleton>;
 }
+
+export const prisma = globalThis.prisma ?? prismaClientSingleton();
+
+globalThis.prisma = prisma;
 
 export default prisma;

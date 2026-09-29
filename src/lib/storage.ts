@@ -8,7 +8,10 @@ export const STORAGE_LIMITS = {
   BUSINESS: 100 * 1024 * 1024, // 100MB
 };
 
-const UPLOAD_BASE_DIR = path.join(process.cwd(), "public", "uploads", "memories");
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const UPLOAD_BASE_DIR = isServerless
+  ? path.join("/tmp", "uploads", "memories")
+  : path.join(process.cwd(), "public", "uploads", "memories");
 
 export async function ensureUploadDirectories() {
   const dirs = [
@@ -77,8 +80,6 @@ export async function saveUploadedFile({
   mimeType: string;
   userId: string;
 }): Promise<{ storagePath: string; publicUrl: string; fileType: "image" | "audio" | "pdf" | "document" | "text"; size: number }> {
-  await ensureUploadDirectories();
-
   const fileType = detectFileType(mimeType, fileName);
   const subFolder = fileType === "image" ? "images" : fileType === "audio" ? "audio" : "documents";
   
@@ -87,15 +88,28 @@ export async function saveUploadedFile({
   const safeBaseName = path.basename(fileName, ext).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 30);
   const uniqueName = `${userId.slice(0, 8)}_${Date.now()}_${randomHex}_${safeBaseName}${ext}`;
 
-  const destPath = path.join(UPLOAD_BASE_DIR, subFolder, uniqueName);
-  await fs.writeFile(destPath, buffer);
+  try {
+    await ensureUploadDirectories();
+    const destPath = path.join(UPLOAD_BASE_DIR, subFolder, uniqueName);
+    await fs.writeFile(destPath, buffer);
 
-  const publicUrl = `/uploads/memories/${subFolder}/${uniqueName}`;
+    const publicUrl = `/uploads/memories/${subFolder}/${uniqueName}`;
 
-  return {
-    storagePath: destPath,
-    publicUrl,
-    fileType,
-    size: buffer.length,
-  };
+    return {
+      storagePath: destPath,
+      publicUrl,
+      fileType,
+      size: buffer.length,
+    };
+  } catch (err) {
+    // If disk write fails on serverless, fallback to data URI for image / audio previews
+    const base64 = buffer.toString("base64");
+    const dataUri = `data:${mimeType};base64,${base64}`;
+    return {
+      storagePath: `memory://${uniqueName}`,
+      publicUrl: dataUri,
+      fileType,
+      size: buffer.length,
+    };
+  }
 }

@@ -98,7 +98,53 @@ async function main() {
   }
   console.log("✅ Coupons seeded (LAUNCH20, SAVE100)");
 
-  // 3. Admin User
+  // 3. Payment Methods
+  const paymentMethods = [
+    {
+      code: "bkash",
+      name: "বিকাশ (bKash Personal / Send Money)",
+      type: "WALLET",
+      accountNumber: "01886123456",
+      accountType: "Personal",
+      instructions: "বিকাশ অ্যাপ বা *247# ডায়াল করে 'Send Money' করুন এবং ট্রানজেকশন আইডি (TrxID) নিচে দিন।",
+      chargePercent: 0,
+      isActive: true,
+      displayOrder: 1,
+    },
+    {
+      code: "nagad",
+      name: "নগদ (Nagad Send Money)",
+      type: "WALLET",
+      accountNumber: "01886123456",
+      accountType: "Personal",
+      instructions: "নগদ অ্যাপ বা *167# ডায়াল করে 'Send Money' করুন এবং ট্রানজেকশন আইডি (TrxID) নিচে দিন।",
+      chargePercent: 0,
+      isActive: true,
+      displayOrder: 2,
+    },
+    {
+      code: "rocket",
+      name: "রকেট (Rocket Send Money)",
+      type: "WALLET",
+      accountNumber: "018861234568",
+      accountType: "Personal",
+      instructions: "রকেট অ্যাপ বা *322# ডায়াল করে 'Send Money' করুন এবং ট্রানজেকশন আইডি প্রদান করুন।",
+      chargePercent: 0,
+      isActive: true,
+      displayOrder: 3,
+    },
+  ];
+
+  for (const pm of paymentMethods) {
+    await prisma.paymentMethodConfig.upsert({
+      where: { code: pm.code },
+      update: pm,
+      create: pm,
+    });
+  }
+  console.log("✅ Payment Methods seeded (bKash, Nagad, Rocket)");
+
+  // 4. Admin User
   const existingAdmin = await prisma.user.findFirst({
     where: { role: "ADMIN" },
   });

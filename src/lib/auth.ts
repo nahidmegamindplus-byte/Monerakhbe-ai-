@@ -47,43 +47,83 @@ export async function getSessionUser(req: NextRequest): Promise<UserSession | nu
   const session = verifyToken(token);
   if (!session) return null;
 
-  // Verify user still exists in DB and is active
+  const cleanEmail = session.email ? session.email.toLowerCase().trim() : "";
+  const isMasterAdmin = 
+    cleanEmail === "admin@monerakhbe.ai" || 
+    cleanEmail === (process.env.ADMIN_EMAIL || "").toLowerCase().trim() || 
+    session.role === "ADMIN";
+
   try {
-    const user = await prisma.user.findUnique({
+    // 1. Try finding user by ID
+    let user = session.id ? await prisma.user.findUnique({
       where: { id: session.id },
       select: { id: true, email: true, name: true, role: true, timezone: true, language: true, plan: true, isSuspended: true },
-    });
+    }).catch(() => null) : null;
 
-    if (!user || user.isSuspended) return null;
-
-    const cleanEmail = user.email.toLowerCase().trim();
-    const isMasterAdmin = cleanEmail === "admin@monerakhbe.ai" || cleanEmail === (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
-
-    let resolvedRole = user.role;
-    if (isMasterAdmin && user.role !== "ADMIN") {
-      resolvedRole = "ADMIN";
-      // Asynchronously ensure database is updated
-      prisma.user.update({
-        where: { id: user.id },
-        data: { role: "ADMIN", isSuspended: false },
-      }).catch(console.error);
+    // 2. Fallback: Try finding user by Email (handles serverless instance cold switches)
+    if (!user && cleanEmail) {
+      user = await prisma.user.findUnique({
+        where: { email: cleanEmail },
+        select: { id: true, email: true, name: true, role: true, timezone: true, language: true, plan: true, isSuspended: true },
+      }).catch(() => null);
     }
 
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: resolvedRole as any,
-      timezone: user.timezone,
-      language: user.language,
-      plan: user.plan as any,
-    };
-  } catch {
-    const cleanEmail = session.email ? session.email.toLowerCase().trim() : "";
-    const isMasterAdmin = cleanEmail === "admin@monerakhbe.ai" || cleanEmail === (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
-    if (isMasterAdmin) {
-      return { ...session, role: "ADMIN" };
+    // 3. Auto-provision master admin if missing in current container
+    if (!user && isMasterAdmin && cleanEmail) {
+      const { ensureMasterAdmin } = await import("@/lib/bootstrap");
+      const created = await ensureMasterAdmin(cleanEmail);
+      if (created) {
+        user = {
+          id: created.id,
+          email: created.email,
+          name: created.name,
+          role: "ADMIN",
+          timezone: created.timezone,
+          language: created.language,
+          plan: created.plan,
+          isSuspended: false,
+        };
+      }
     }
-    return session;
+
+    if (user && user.isSuspended) return null;
+
+    if (user) {
+      const userCleanEmail = user.email.toLowerCase().trim();
+      const isAdminEmail = userCleanEmail === "admin@monerakhbe.ai" || userCleanEmail === (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
+      let resolvedRole = user.role;
+      if (isAdminEmail || isMasterAdmin) {
+        resolvedRole = "ADMIN";
+      }
+
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: resolvedRole as any,
+        timezone: user.timezone,
+        language: user.language,
+        plan: user.plan as any,
+      };
+    }
+
+    // If valid token exists and has user data, return token payload
+    if (session.id && session.email) {
+      return {
+        ...session,
+        role: isMasterAdmin ? "ADMIN" : session.role,
+      };
+    }
+
+    return null;
+  } catch (err) {
+    console.warn("[Auth getSessionUser fallback]", err);
+    if (session.id && session.email) {
+      return {
+        ...session,
+        role: isMasterAdmin ? "ADMIN" : session.role,
+      };
+    }
+    return null;
   }
 }

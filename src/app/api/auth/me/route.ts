@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({
+    let user: any = session.id ? await prisma.user.findUnique({
       where: { id: session.id },
       include: {
         profile: true,
@@ -32,10 +32,51 @@ export async function GET(req: NextRequest) {
           },
         },
       },
-    });
+    }).catch(() => null) : null;
+
+    if (!user && session.email) {
+      user = await prisma.user.findUnique({
+        where: { email: session.email.toLowerCase().trim() },
+        include: {
+          profile: true,
+          telegramConnection: {
+            select: {
+              isConnected: true,
+              username: true,
+              firstName: true,
+              connectedAt: true,
+              connectionToken: true,
+            },
+          },
+          _count: {
+            select: {
+              reminders: { where: { deletedAt: null } },
+              memories: true,
+              tasks: { where: { status: { not: "COMPLETED" } } },
+            },
+          },
+        },
+      }).catch(() => null);
+    }
 
     if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return NextResponse.json({
+        success: true,
+        user: {
+          id: session.id,
+          name: session.name || "User",
+          email: session.email,
+          role: session.role,
+          timezone: session.timezone || "Asia/Dhaka",
+          language: session.language || "bn",
+          plan: session.plan || "FREE",
+          stats: {
+            remindersCount: 0,
+            memoriesCount: 0,
+            pendingTasksCount: 0,
+          },
+        },
+      });
     }
 
     return NextResponse.json({
@@ -51,9 +92,9 @@ export async function GET(req: NextRequest) {
         profile: user.profile,
         telegram: user.telegramConnection,
         stats: {
-          remindersCount: user._count.reminders,
-          memoriesCount: user._count.memories,
-          pendingTasksCount: user._count.tasks,
+          remindersCount: user._count?.reminders ?? 0,
+          memoriesCount: user._count?.memories ?? 0,
+          pendingTasksCount: user._count?.tasks ?? 0,
         },
       },
     });

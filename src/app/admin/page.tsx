@@ -202,10 +202,24 @@ export default function AdminPage() {
     setTimeout(() => setActionMsg(null), 4000);
   };
 
+  // Helper for Authenticated Admin API Requests with Automatic Bearer Token & Credentials
+  const adminFetch = (url: string, options: RequestInit = {}) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const headers = new Headers(options.headers || {});
+    if (token && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+    return fetch(url, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
+  };
+
   // Main Overview Fetcher
   const fetchOverview = async () => {
     try {
-      const res = await fetch("/api/admin");
+      const res = await adminFetch("/api/admin");
       if (res.status === 403) {
         return;
       }
@@ -223,7 +237,7 @@ export default function AdminPage() {
       if (statusFilter !== "ALL") params.append("status", statusFilter);
       if (methodFilter !== "ALL") params.append("method", methodFilter);
 
-      const res = await fetch(`/api/admin/payments?${params.toString()}`);
+      const res = await adminFetch(`/api/admin/payments?${params.toString()}`);
       const json = await res.json();
       if (json.success) {
         setOrdersList(json.orders);
@@ -236,7 +250,7 @@ export default function AdminPage() {
 
   const fetchPaymentMethodsAdmin = async () => {
     try {
-      const res = await fetch("/api/admin/payment-methods");
+      const res = await adminFetch("/api/admin/payment-methods");
       const json = await res.json();
       if (json.success) setPaymentMethodsAdminList(json.paymentMethods);
     } catch (err) {
@@ -246,7 +260,7 @@ export default function AdminPage() {
 
   const fetchPlans = async () => {
     try {
-      const res = await fetch("/api/admin/plans");
+      const res = await adminFetch("/api/admin/plans");
       const json = await res.json();
       if (json.success) setPlansList(json.plans);
     } catch (err) {
@@ -262,7 +276,7 @@ export default function AdminPage() {
       if (planFilter !== "ALL") params.append("plan", planFilter);
       if (statusFilter !== "ALL") params.append("status", statusFilter);
 
-      const res = await fetch(`/api/admin/users?${params.toString()}`);
+      const res = await adminFetch(`/api/admin/users?${params.toString()}`);
       const json = await res.json();
       if (json.success) setUsersList(json.users);
     } catch (err) {
@@ -278,7 +292,7 @@ export default function AdminPage() {
       if (priorityFilter !== "ALL") params.append("priority", priorityFilter);
       if (selectedUserFilter !== "ALL") params.append("userId", selectedUserFilter);
 
-      const res = await fetch(`/api/admin/reminders?${params.toString()}`);
+      const res = await adminFetch(`/api/admin/reminders?${params.toString()}`);
       const json = await res.json();
       if (json.success) setRemindersList(json.reminders);
     } catch (err) {
@@ -293,7 +307,7 @@ export default function AdminPage() {
       if (categoryFilter !== "ALL") params.append("category", categoryFilter);
       if (selectedUserFilter !== "ALL") params.append("userId", selectedUserFilter);
 
-      const res = await fetch(`/api/admin/memories?${params.toString()}`);
+      const res = await adminFetch(`/api/admin/memories?${params.toString()}`);
       const json = await res.json();
       if (json.success) setMemoriesList(json.memories);
     } catch (err) {
@@ -309,7 +323,7 @@ export default function AdminPage() {
       if (priorityFilter !== "ALL") params.append("priority", priorityFilter);
       if (selectedUserFilter !== "ALL") params.append("userId", selectedUserFilter);
 
-      const res = await fetch(`/api/admin/tasks?${params.toString()}`);
+      const res = await adminFetch(`/api/admin/tasks?${params.toString()}`);
       const json = await res.json();
       if (json.success) setTasksList(json.tasks);
     } catch (err) {
@@ -319,7 +333,7 @@ export default function AdminPage() {
 
   const fetchNotifications = async () => {
     try {
-      const res = await fetch("/api/admin/notifications");
+      const res = await adminFetch("/api/admin/notifications");
       const json = await res.json();
       if (json.success) setNotificationsList(json.notifications);
     } catch (err) {
@@ -329,7 +343,7 @@ export default function AdminPage() {
 
   const fetchTelegrams = async () => {
     try {
-      const res = await fetch("/api/admin/telegram");
+      const res = await adminFetch("/api/admin/telegram");
       const json = await res.json();
       if (json.success) setTelegramsList(json.connections);
     } catch (err) {
@@ -339,7 +353,7 @@ export default function AdminPage() {
 
   const fetchSubscriptions = async () => {
     try {
-      const res = await fetch("/api/admin/subscriptions");
+      const res = await adminFetch("/api/admin/subscriptions");
       const json = await res.json();
       if (json.success) setSubscriptionsList(json.subscriptions);
     } catch (err) {
@@ -349,7 +363,7 @@ export default function AdminPage() {
 
   const fetchSystem = async () => {
     try {
-      const res = await fetch("/api/admin/system");
+      const res = await adminFetch("/api/admin/system");
       const json = await res.json();
       if (json.success) setSystemTelemetry(json);
     } catch (err) {
@@ -418,7 +432,7 @@ export default function AdminPage() {
     setAdminLoginLoading(true);
     setAdminLoginError("");
     try {
-      const res = await fetch("/api/admin/promote-me", {
+      const res = await adminFetch("/api/admin/promote-me", {
         method: "POST",
       });
       const resData = await res.json();
@@ -463,7 +477,7 @@ export default function AdminPage() {
     e.preventDefault();
     try {
       if (editingUser) {
-        const res = await fetch("/api/admin/users", {
+        const res = await adminFetch("/api/admin/users", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -488,7 +502,7 @@ export default function AdminPage() {
           notify(json.error || "আপডেট ব্যর্থ হয়েছে", "error");
         }
       } else {
-        const res = await fetch("/api/admin/users", {
+        const res = await adminFetch("/api/admin/users", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(userFormData),
@@ -516,7 +530,7 @@ export default function AdminPage() {
       return;
     }
     try {
-      const res = await fetch("/api/admin/users", {
+      const res = await adminFetch("/api/admin/users", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -546,7 +560,7 @@ export default function AdminPage() {
     const actionLabel = action === "BLOCK" ? "ব্লক ও অফ" : "আনব্লক ও অন";
     setQuickBlockLoading(true);
     try {
-      const res = await fetch("/api/admin/users", {
+      const res = await adminFetch("/api/admin/users", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -575,7 +589,7 @@ export default function AdminPage() {
     e.preventDefault();
     try {
       const isNew = !editingPlan;
-      const res = await fetch("/api/admin/plans", {
+      const res = await adminFetch("/api/admin/plans", {
         method: isNew ? "POST" : "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(planFormData),
@@ -613,7 +627,7 @@ export default function AdminPage() {
     e.preventDefault();
     try {
       const isNew = !editingPaymentMethod;
-      const res = await fetch("/api/admin/payment-methods", {
+      const res = await adminFetch("/api/admin/payment-methods", {
         method: isNew ? "POST" : "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isNew ? paymentMethodFormData : { id: editingPaymentMethod.id, ...paymentMethodFormData }),
@@ -636,7 +650,7 @@ export default function AdminPage() {
   const handleTogglePaymentMethodActive = async (method: any) => {
     try {
       const nextState = !method.isActive;
-      const res = await fetch("/api/admin/payment-methods", {
+      const res = await adminFetch("/api/admin/payment-methods", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: method.id, isActive: nextState }),
@@ -666,7 +680,7 @@ export default function AdminPage() {
   // Payment Manual Verify Action
   const handleManualVerifyPayment = async (orderId: string) => {
     try {
-      const res = await fetch("/api/admin/payments", {
+      const res = await adminFetch("/api/admin/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "MANUAL_VERIFY", orderId }),
@@ -687,7 +701,7 @@ export default function AdminPage() {
   // Refund Order Action
   const handleRefundOrder = async (orderId: string) => {
     try {
-      const res = await fetch("/api/admin/payments", {
+      const res = await adminFetch("/api/admin/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "REFUND", orderId, reason: "Admin initiated refund" }),
@@ -708,7 +722,7 @@ export default function AdminPage() {
   // Reject Order Action
   const handleRejectOrder = async (orderId: string) => {
     try {
-      const res = await fetch("/api/admin/payments", {
+      const res = await adminFetch("/api/admin/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "REJECT", orderId, reason: "Admin rejected unverified payment" }),
@@ -730,7 +744,7 @@ export default function AdminPage() {
     e.preventDefault();
     try {
       if (editingReminder) {
-        const res = await fetch("/api/admin/reminders", {
+        const res = await adminFetch("/api/admin/reminders", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: editingReminder.id, ...reminderFormData }),
@@ -745,7 +759,7 @@ export default function AdminPage() {
           notify(json.error || "আপডেট ব্যর্থ হয়েছে", "error");
         }
       } else {
-        const res = await fetch("/api/admin/reminders", {
+        const res = await adminFetch("/api/admin/reminders", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(reminderFormData),
@@ -769,7 +783,7 @@ export default function AdminPage() {
     e.preventDefault();
     try {
       if (editingMemory) {
-        const res = await fetch("/api/admin/memories", {
+        const res = await adminFetch("/api/admin/memories", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: editingMemory.id, ...memoryFormData }),
@@ -783,7 +797,7 @@ export default function AdminPage() {
           notify(json.error || "আপডেট ব্যর্থ হয়েছে", "error");
         }
       } else {
-        const res = await fetch("/api/admin/memories", {
+        const res = await adminFetch("/api/admin/memories", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(memoryFormData),
@@ -806,7 +820,7 @@ export default function AdminPage() {
     e.preventDefault();
     try {
       if (editingTask) {
-        const res = await fetch("/api/admin/tasks", {
+        const res = await adminFetch("/api/admin/tasks", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: editingTask.id, ...taskFormData }),
@@ -820,7 +834,7 @@ export default function AdminPage() {
           notify(json.error || "আপডেট ব্যর্থ হয়েছে", "error");
         }
       } else {
-        const res = await fetch("/api/admin/tasks", {
+        const res = await adminFetch("/api/admin/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(taskFormData),
@@ -842,7 +856,7 @@ export default function AdminPage() {
   const handleGrantSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("/api/admin/subscriptions", {
+      const res = await adminFetch("/api/admin/subscriptions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(subFormData),
@@ -864,7 +878,7 @@ export default function AdminPage() {
   const handleExecuteDelete = async () => {
     try {
       if (deleteConfirm.type === "plan") {
-        const res = await fetch(`/api/admin/plans?id=${deleteConfirm.id}`, {
+        const res = await adminFetch(`/api/admin/plans?id=${deleteConfirm.id}`, {
           method: "DELETE",
         });
         const json = await res.json();
@@ -881,7 +895,7 @@ export default function AdminPage() {
       }
 
       if (deleteConfirm.type === "paymentMethod") {
-        const res = await fetch(`/api/admin/payment-methods?id=${deleteConfirm.id}`, {
+        const res = await adminFetch(`/api/admin/payment-methods?id=${deleteConfirm.id}`, {
           method: "DELETE",
         });
         const json = await res.json();
@@ -923,7 +937,7 @@ export default function AdminPage() {
 
   const handleNotificationAction = async (action: string, notificationId?: string) => {
     try {
-      const res = await fetch("/api/admin/notifications", {
+      const res = await adminFetch("/api/admin/notifications", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, notificationId }),
@@ -943,7 +957,7 @@ export default function AdminPage() {
 
   const handleTelegramAction = async (id: string, action: string) => {
     try {
-      const res = await fetch("/api/admin/telegram", {
+      const res = await adminFetch("/api/admin/telegram", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, action }),
@@ -962,7 +976,7 @@ export default function AdminPage() {
 
   const handleExportData = async (targetTable: string = "ALL") => {
     try {
-      const res = await fetch("/api/admin/system", {
+      const res = await adminFetch("/api/admin/system", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "EXPORT_DATA", targetTable }),

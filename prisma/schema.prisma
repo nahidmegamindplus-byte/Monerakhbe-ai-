@@ -1,0 +1,444 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         String    @default("USER") // USER, ADMIN
+  timezone     String    @default("Asia/Dhaka")
+  language     String    @default("bn") // bn, en
+  plan         String    @default("FREE") // FREE, PRO, BUSINESS
+  isSuspended  Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  profile               Profile?
+  telegramConnection    TelegramConnection?
+  reminders             Reminder[]
+  recurrences           Recurrence[]
+  notifications         ReminderNotification[]
+  memories              Memory[]
+  tasks                 Task[]
+  messages              ConversationMessage[]
+  usageLogs             UsageLog[]
+  auditLogs             AuditLog[]
+  subscriptions         Subscription[]
+  orders                Order[]
+  transactions          PaymentTransaction[]
+  refunds               Refund[]
+  invoices              Invoice[]
+
+  @@map("users")
+}
+
+model Profile {
+  id                      String   @id @default(uuid())
+  userId                  String   @unique
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultMorningTime      String   @default("09:00")
+  defaultEveningTime      String   @default("17:00")
+  defaultOffsetsJson      String   @default("[\"at_time\"]")
+  notificationPreferences String   @default("{\"telegram\":true,\"email\":false,\"web\":true}")
+  aiPreferences           String   @default("{\"languageStyle\":\"natural\",\"confirmDeletions\":true}")
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@map("profiles")
+}
+
+model TelegramConnection {
+  id               String    @id @default(uuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  telegramUserId   String?   @unique
+  chatId           String?
+  username         String?
+  firstName        String?
+  isConnected      Boolean   @default(false)
+  connectionToken  String?   @unique
+  tokenExpiresAt   DateTime?
+  connectedAt      DateTime?
+  updatedAt        DateTime  @updatedAt
+
+  @@map("telegram_connections")
+}
+
+model Reminder {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  dueAt        DateTime
+  timezone     String    @default("Asia/Dhaka")
+  status       String    @default("PENDING") // PENDING, COMPLETED, CANCELLED, SNOOZED, OVERDUE
+  priority     String    @default("NORMAL") // LOW, NORMAL, HIGH
+  categoryName String    @default("General")
+  recurrenceId String?
+  recurrence   Recurrence? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+  completedAt  DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  notifications ReminderNotification[]
+  memories      Memory[]
+
+  @@index([userId, status, dueAt])
+  @@map("reminders")
+}
+
+model Recurrence {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  frequency      String    // DAILY, WEEKLY, MONTHLY, YEARLY, CUSTOM
+  interval       Int       @default(1)
+  dayOfWeek      Int?      // 0-6 (Sun-Sat)
+  dayOfMonth     Int?      // 1-31
+  month          Int?      // 1-12
+  timeOfDay      String?   // "17:00"
+  startDate      DateTime  @default(now())
+  endDate        DateTime?
+  nextOccurrence DateTime
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  reminders      Reminder[]
+
+  @@map("recurrences")
+}
+
+model ReminderNotification {
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminderId       String
+  reminder         Reminder  @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  scheduledFor     DateTime
+  sentAt           DateTime?
+  status           String    @default("PENDING") // PENDING, SENT, FAILED, CANCELLED
+  channel          String    @default("TELEGRAM") // TELEGRAM, EMAIL, WEB
+  deduplicationKey String    @unique
+  retryCount       Int       @default(0)
+  errorMessage     String?
+  createdAt        DateTime  @default(now())
+
+  @@index([status, scheduledFor])
+  @@map("reminder_notifications")
+}
+
+model Memory {
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category       String    @default("Personal")
+  key            String
+  value          String
+  tags           String?
+  source         String    @default("manual_text")
+  confidence     Float     @default(1.0)
+  summary        String?
+  extractedText  String?
+  structuredData String?
+  reminderId     String?
+  reminder       Reminder? @relation(fields: [reminderId], references: [id], onDelete: SetNull)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  attachments MemoryAttachment[]
+  embeddings  MemoryEmbedding[]
+  timeline    MemoryTimeline[]
+
+  @@index([userId, category])
+  @@index([userId, source])
+  @@map("memories")
+}
+
+model MemoryAttachment {
+  id            String   @id @default(uuid())
+  memoryId      String
+  memory        Memory   @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  userId        String
+  type          String
+  fileName      String
+  mimeType      String
+  fileSize      Int
+  storagePath   String
+  thumbnailPath String?
+  extractedText String?
+  createdAt     DateTime @default(now())
+
+  @@index([memoryId])
+  @@index([userId])
+  @@map("memory_attachments")
+}
+
+model MemoryEmbedding {
+  id            String   @id @default(uuid())
+  userId        String
+  memoryId      String
+  memory        Memory   @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  chunkId       String
+  chunkText     String
+  embeddingJson String?
+  createdAt     DateTime @default(now())
+
+  @@index([userId, memoryId])
+  @@map("memory_embeddings")
+}
+
+model MemoryTimeline {
+  id          String   @id @default(uuid())
+  memoryId    String
+  memory      Memory   @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  userId      String
+  action      String
+  source      String
+  description String
+  createdAt   DateTime @default(now())
+
+  @@index([memoryId])
+  @@index([userId])
+  @@map("memory_timelines")
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  status      String    @default("TODO") // TODO, IN_PROGRESS, COMPLETED, CANCELLED
+  priority    String    @default("NORMAL") // LOW, NORMAL, HIGH
+  dueDate     DateTime?
+  dueTime     String?
+  category    String    @default("Work")
+  tags        String?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@map("tasks")
+}
+
+model ConversationMessage {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   String   @default("WEB") // TELEGRAM, WEB
+  role      String   // USER, ASSISTANT, SYSTEM
+  content   String
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, channel, createdAt])
+  @@map("conversation_messages")
+}
+
+model UsageLog {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actionType String
+  tokensUsed Int      @default(0)
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("usage_logs")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String
+  entityId   String?
+  details    String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+// ---------------------- PAYMENT & SUBSCRIPTION SYSTEM ----------------------
+
+model Plan {
+  id               String   @id // FREE, PRO, BUSINESS
+  name             String
+  description      String?
+  monthlyPrice     Float    @default(0) // ৳ BDT
+  yearlyPrice      Float    @default(0) // ৳ BDT
+  currency         String   @default("BDT")
+  memoryLimit      Int      @default(10)
+  reminderLimit    Int      @default(20)
+  taskLimit        Int      @default(20)
+  aiLimit          Int      @default(50)
+  fileSizeLimit    Int      @default(5) // in MB
+  telegramEnabled  Boolean  @default(true)
+  advancedFeatures Boolean  @default(false)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  orders        Order[]
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Order {
+  id                    String    @id @default(uuid())
+  orderNumber           String    @unique // e.g. MNR-20260928-000123
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId                String
+  plan                  Plan      @relation(fields: [planId], references: [id])
+  billingCycle          String    @default("MONTHLY") // MONTHLY, YEARLY
+  amount                Float     // Final payable BDT
+  originalAmount        Float     // Base price before discount
+  discountAmount        Float     @default(0)
+  couponCode            String?
+  currency              String    @default("BDT")
+  paymentMethod         String    // bkash, nagad, rocket
+  status                String    @default("PENDING") // PENDING, PROCESSING, PAID, FAILED, CANCELLED, REFUNDED, EXPIRED
+  transactionId         String?   @unique // System internal transaction reference
+  providerTransactionId String?   // Gateway's trxID (e.g. TrxID from bKash/Nagad)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  paidAt                DateTime?
+  expiresAt             DateTime? // e.g. order valid for 30 minutes
+
+  transactions  PaymentTransaction[]
+  subscriptions Subscription[]
+  refunds       Refund[]
+  invoice       Invoice?
+
+  @@index([userId, status])
+  @@map("orders")
+}
+
+model PaymentTransaction {
+  id                String    @id @default(uuid())
+  orderId           String
+  order             Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          String    // BKASH, NAGAD, ROCKET
+  paymentMethod     String    // bkash, nagad, rocket
+  transactionId     String    @unique // e.g. TXN-20260928-987654
+  providerPaymentId String?   // gateway paymentID
+  providerTrxId     String?   // gateway TrxID
+  amount            Float
+  currency          String    @default("BDT")
+  status            String    @default("PENDING") // PENDING, SUCCESS, FAILED, CANCELLED, REFUNDED
+  rawReference      String?   // JSON representation of gateway response
+  failureReason     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  verifiedAt        DateTime?
+
+  refunds Refund[]
+
+  @@index([orderId, status])
+  @@index([userId])
+  @@map("payment_transactions")
+}
+
+model Subscription {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId        String    @default("FREE")
+  plan          Plan      @relation(fields: [planId], references: [id])
+  orderId       String?
+  order         Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  status        String    @default("ACTIVE") // ACTIVE, EXPIRED, CANCELLED, PAST_DUE, TRIAL
+  billingCycle  String    @default("MONTHLY") // MONTHLY, YEARLY
+  paymentMethod String?   // bkash, nagad, rocket, manual_admin
+  startedAt     DateTime  @default(now())
+  expiresAt     DateTime?
+  validUntil    DateTime? // backward compatibility alias
+  cancelledAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@map("subscriptions")
+}
+
+model Coupon {
+  id             String    @id @default(uuid())
+  code           String    @unique
+  type           String    @default("PERCENTAGE") // PERCENTAGE, FIXED_AMOUNT
+  value          Float     // e.g. 20 for 20% or 100 for 100 BDT
+  maxUses        Int       @default(100)
+  usedCount      Int       @default(0)
+  minOrderAmount Float     @default(0)
+  startsAt       DateTime  @default(now())
+  expiresAt      DateTime?
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("coupons")
+}
+
+model Refund {
+  id                   String             @id @default(uuid())
+  paymentTransactionId String
+  transaction          PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+  orderId              String
+  order                Order              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId               String
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount               Float
+  reason               String?
+  status               String             @default("REQUESTED") // REQUESTED, PROCESSING, COMPLETED, FAILED, CANCELLED
+  providerRefundId     String?
+  createdAt            DateTime           @default(now())
+  processedAt          DateTime?
+
+  @@index([orderId])
+  @@index([userId])
+  @@map("refunds")
+}
+
+model Invoice {
+  id                    String    @id @default(uuid())
+  invoiceNumber         String    @unique // e.g. INV-202609-0012
+  orderId               String    @unique
+  order                 Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customerName          String
+  customerEmail         String
+  planName              String
+  billingCycle          String
+  paymentMethod         String
+  transactionId         String
+  amount                Float
+  vatAmount             Float     @default(0)
+  discountAmount        Float     @default(0)
+  status                String    @default("PAID")
+  invoiceDate           DateTime  @default(now())
+  subscriptionExpiresAt DateTime?
+  pdfUrl                String?
+  createdAt             DateTime  @default(now())
+
+  @@index([userId])
+  @@map("invoices")
+}

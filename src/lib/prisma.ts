@@ -3,41 +3,69 @@ import fs from "fs";
 import path from "path";
 
 // Vercel Serverless / AWS Lambda SQLite handling
-function setupVercelDatabase() {
+function getDatabaseUrl(): string {
   const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-  if (isServerless) {
-    const dbUrl = process.env.DATABASE_URL || "file:./dev.db";
-    if (!dbUrl || dbUrl.startsWith("file:")) {
-      const tmpDbPath = "/tmp/dev.db";
-      if (!fs.existsSync(tmpDbPath)) {
-        const potentialSources = [
-          path.join(process.cwd(), "dev.db"),
-          path.join(process.cwd(), "prisma", "dev.db"),
-          path.join("/var/task", "dev.db"),
-          path.join("/var/task", "prisma", "dev.db"),
-        ];
+  const currentUrl = process.env.DATABASE_URL || "file:./dev.db";
 
-        for (const src of potentialSources) {
-          if (fs.existsSync(src)) {
-            try {
-              fs.copyFileSync(src, tmpDbPath);
-              console.log(`[Prisma Init] Copied seed DB from ${src} to ${tmpDbPath}`);
-              break;
-            } catch (err) {
-              console.error("[Prisma Init] Failed to copy SQLite db to /tmp:", err);
-            }
+  if (isServerless && currentUrl.startsWith("file:")) {
+    const tmpDbPath = "/tmp/dev.db";
+    
+    // Check if tmp db already exists and has data
+    let needsCopy = true;
+    try {
+      if (fs.existsSync(tmpDbPath) && fs.statSync(tmpDbPath).size > 0) {
+        needsCopy = false;
+      }
+    } catch {
+      needsCopy = true;
+    }
+
+    if (needsCopy) {
+      const potentialSources = [
+        path.join(process.cwd(), "prisma", "dev.db"),
+        path.join(process.cwd(), "dev.db"),
+        path.join("/var/task", "prisma", "dev.db"),
+        path.join("/var/task", "dev.db"),
+        path.resolve("./prisma/dev.db"),
+        path.resolve("./dev.db"),
+      ];
+
+      let copied = false;
+      for (const src of potentialSources) {
+        try {
+          if (fs.existsSync(src) && fs.statSync(src).size > 0) {
+            fs.copyFileSync(src, tmpDbPath);
+            console.log(`[Prisma Init] Successfully copied seed DB from ${src} to ${tmpDbPath} (${fs.statSync(tmpDbPath).size} bytes)`);
+            copied = true;
+            break;
           }
+        } catch (err) {
+          console.warn(`[Prisma Init] Candidate ${src} failed to copy:`, err);
         }
       }
-      process.env.DATABASE_URL = `file:${tmpDbPath}`;
+
+      if (!copied) {
+        console.warn("[Prisma Init] No seed DB source found. Prisma will connect to /tmp/dev.db directly.");
+      }
     }
+
+    const finalUrl = `file:${tmpDbPath}`;
+    process.env.DATABASE_URL = finalUrl;
+    return finalUrl;
   }
+
+  return currentUrl;
 }
 
-setupVercelDatabase();
+const resolvedDbUrl = getDatabaseUrl();
 
 const prismaClientSingleton = () => {
   return new PrismaClient({
+    datasources: {
+      db: {
+        url: resolvedDbUrl,
+      },
+    },
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
 };
@@ -49,6 +77,9 @@ declare global {
 
 export const prisma = globalThis.prisma ?? prismaClientSingleton();
 
-globalThis.prisma = prisma;
+if (process.env.NODE_ENV !== "production") {
+  globalThis.prisma = prisma;
+}
 
 export default prisma;
+

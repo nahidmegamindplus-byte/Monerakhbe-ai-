@@ -22,17 +22,27 @@ export async function POST(req: NextRequest) {
     }
 
     const passwordHash = await hashPassword(password);
-    const userRole = (await prisma.user.count()) === 0 ? "ADMIN" : "USER"; // First user becomes admin automatically
+    const cleanEmail = email.toLowerCase().trim();
+    
+    let isFirstUser = false;
+    try {
+      isFirstUser = (await prisma.user.count()) === 0;
+    } catch {
+      isFirstUser = false;
+    }
+
+    const isMasterAdmin = cleanEmail === "admin@monerakhbe.ai" || cleanEmail === (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
+    const userRole = (isFirstUser || isMasterAdmin) ? "ADMIN" : "USER";
 
     const user = await prisma.user.create({
       data: {
-        name,
-        email: email.toLowerCase().trim(),
+        name: name.trim(),
+        email: cleanEmail,
         passwordHash,
         role: userRole,
         timezone: timezone || "Asia/Dhaka",
         language: language || "bn",
-        plan: "FREE",
+        plan: isMasterAdmin ? "BUSINESS" : "FREE",
         profile: {
           create: {
             defaultMorningTime: "09:00",
@@ -80,6 +90,8 @@ export async function POST(req: NextRequest) {
     return response;
   } catch (error: any) {
     console.error("[Register Error]", error);
-    return NextResponse.json({ error: "Registration failed. Please try again." }, { status: 500 });
+    return NextResponse.json({ 
+      error: error?.message || "Registration failed. Please try again." 
+    }, { status: 500 });
   }
 }

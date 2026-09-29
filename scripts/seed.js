@@ -179,6 +179,23 @@ async function main() {
   } else {
     console.log("✅ Admin user already exists.");
   }
+
+  // Mirror dev.db to root and prisma directory so serverless bundle traces both
+  try {
+    const fs = require("fs");
+    const path = require("path");
+    const prismaDb = path.join(process.cwd(), "prisma", "dev.db");
+    const rootDb = path.join(process.cwd(), "dev.db");
+    if (fs.existsSync(prismaDb)) {
+      fs.copyFileSync(prismaDb, rootDb);
+      console.log("✅ Mirrored prisma/dev.db to dev.db");
+    } else if (fs.existsSync(rootDb)) {
+      fs.copyFileSync(rootDb, prismaDb);
+      console.log("✅ Mirrored dev.db to prisma/dev.db");
+    }
+  } catch (err) {
+    console.warn("Could not mirror dev.db:", err.message);
+  }
 }
 
 main()
@@ -189,3 +206,4 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+

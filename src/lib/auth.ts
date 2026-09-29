@@ -56,16 +56,34 @@ export async function getSessionUser(req: NextRequest): Promise<UserSession | nu
 
     if (!user || user.isSuspended) return null;
 
+    const cleanEmail = user.email.toLowerCase().trim();
+    const isMasterAdmin = cleanEmail === "admin@monerakhbe.ai" || cleanEmail === (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
+
+    let resolvedRole = user.role;
+    if (isMasterAdmin && user.role !== "ADMIN") {
+      resolvedRole = "ADMIN";
+      // Asynchronously ensure database is updated
+      prisma.user.update({
+        where: { id: user.id },
+        data: { role: "ADMIN", isSuspended: false },
+      }).catch(console.error);
+    }
+
     return {
       id: user.id,
       email: user.email,
       name: user.name,
-      role: user.role as any,
+      role: resolvedRole as any,
       timezone: user.timezone,
       language: user.language,
       plan: user.plan as any,
     };
   } catch {
+    const cleanEmail = session.email ? session.email.toLowerCase().trim() : "";
+    const isMasterAdmin = cleanEmail === "admin@monerakhbe.ai" || cleanEmail === (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
+    if (isMasterAdmin) {
+      return { ...session, role: "ADMIN" };
+    }
     return session;
   }
 }

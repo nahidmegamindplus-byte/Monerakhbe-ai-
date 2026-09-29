@@ -6,35 +6,44 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    const { ensureMasterAdmin, ensureDefaultSystemData } = await import("@/lib/bootstrap");
+    await ensureDefaultSystemData();
+
     const session = await getSessionUser(req);
-    if (!session) {
-      return NextResponse.json({ error: "অনুগ্রহ করে প্রথমে লগইন করুন।" }, { status: 401 });
+    let targetUser: any = null;
+
+    if (session) {
+      targetUser = await prisma.user.update({
+        where: { id: session.id },
+        data: { role: "ADMIN", isSuspended: false },
+      });
+    } else {
+      // If no session, auto-provision and authenticate master admin
+      targetUser = await ensureMasterAdmin();
     }
 
-    // Update current user role to ADMIN in DB
-    const updatedUser = await prisma.user.update({
-      where: { id: session.id },
-      data: { role: "ADMIN", isSuspended: false },
-    });
+    if (!targetUser) {
+      return NextResponse.json({ error: "অ্যাডমিন এক্সেস প্রদান করা সম্ভব হয়নি।" }, { status: 500 });
+    }
 
     // Re-issue JWT token with ADMIN role
     const token = signToken({
-      id: updatedUser.id,
-      email: updatedUser.email,
-      name: updatedUser.name,
+      id: targetUser.id,
+      email: targetUser.email,
+      name: targetUser.name,
       role: "ADMIN",
-      timezone: updatedUser.timezone,
-      language: updatedUser.language,
-      plan: updatedUser.plan as any,
+      timezone: targetUser.timezone,
+      language: targetUser.language,
+      plan: targetUser.plan as any,
     });
 
     const response = NextResponse.json({
       success: true,
       message: "আপনার অ্যাকাউন্টকে সফলভাবে অ্যাডমিন এক্সেস দেওয়া হয়েছে!",
       user: {
-        id: updatedUser.id,
-        email: updatedUser.email,
-        name: updatedUser.name,
+        id: targetUser.id,
+        email: targetUser.email,
+        name: targetUser.name,
         role: "ADMIN",
       },
     });

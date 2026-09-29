@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
     const response = NextResponse.json({
       success: true,
       message: "আপনার অ্যাকাউন্টকে সফলভাবে অ্যাডমিন এক্সেস দেওয়া হয়েছে!",
+      token,
       user: {
         id: targetUser.id,
         email: targetUser.email,

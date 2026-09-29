@@ -73,8 +73,8 @@ export default function AdminPage() {
   const router = useRouter();
 
   // Admin Direct Gateway Auth States
-  const [adminEmail, setAdminEmail] = useState("");
-  const [adminPassword, setAdminPassword] = useState("");
+  const [adminEmail, setAdminEmail] = useState("admin@monerakhbe.ai");
+  const [adminPassword, setAdminPassword] = useState("Admin123456!");
   const [adminLoginLoading, setAdminLoginLoading] = useState(false);
   const [adminLoginError, setAdminLoginError] = useState("");
 
@@ -398,6 +398,9 @@ export default function AdminPage() {
       });
       const resData = await res.json();
       if (res.ok && resData.success) {
+        if (resData.token && typeof window !== "undefined") {
+          localStorage.setItem("token", resData.token);
+        }
         await refreshUser();
         notify("অ্যাডমিন হিসেবে সফলভাবে লগইন হয়েছে!");
       } else {
@@ -420,6 +423,9 @@ export default function AdminPage() {
       });
       const resData = await res.json();
       if (res.ok && resData.success) {
+        if (resData.token && typeof window !== "undefined") {
+          localStorage.setItem("token", resData.token);
+        }
         await refreshUser();
         notify("আপনার অ্যাকাউন্টকে সফলভাবে অ্যাডমিন এক্সেস দেওয়া হয়েছে!");
       } else {

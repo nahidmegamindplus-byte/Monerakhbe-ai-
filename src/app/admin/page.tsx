@@ -72,8 +72,8 @@ export default function AdminPage() {
   const router = useRouter();
 
   // Admin Direct Gateway Auth States
-  const [adminEmail, setAdminEmail] = useState("admin@monerakhbe.ai");
-  const [adminPassword, setAdminPassword] = useState("Admin123456!");
+  const [adminEmail, setAdminEmail] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
   const [adminLoginLoading, setAdminLoginLoading] = useState(false);
   const [adminLoginError, setAdminLoginError] = useState("");
 

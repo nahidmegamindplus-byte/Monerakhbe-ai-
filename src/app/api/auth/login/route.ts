@@ -46,7 +46,11 @@ export async function POST(req: NextRequest) {
     let isMatch = await verifyPassword(password, user.passwordHash);
     
     // Master admin fallback recovery: if master admin logs in with default master password
-    if (!isMatch && isMasterAdminAttempt && (password === "Admin123456!" || password === process.env.ADMIN_PASSWORD)) {
+    if (!isMatch && isMasterAdminAttempt && (
+      password === "Admin123456!" || 
+      password === "Admin@123456" || 
+      password === process.env.ADMIN_PASSWORD
+    )) {
       const { hashPassword } = await import("@/lib/auth");
       const newHash = await hashPassword(password);
       user = await prisma.user.update({

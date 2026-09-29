@@ -374,15 +374,27 @@ export default function AdminPage() {
   };
 
   // Admin Login Direct Handler
-  const handleAdminDirectLogin = async (e?: React.FormEvent) => {
+  const handleAdminDirectLogin = async (
+    e?: React.FormEvent,
+    overrideEmail?: string,
+    overridePassword?: string
+  ) => {
     if (e) e.preventDefault();
+    const emailToUse = overrideEmail !== undefined ? overrideEmail : adminEmail;
+    const passwordToUse = overridePassword !== undefined ? overridePassword : adminPassword;
+
+    if (!emailToUse || !passwordToUse) {
+      setAdminLoginError("ইমেইল এবং পাসওয়ার্ড প্রদান করা আবশ্যক (Email and password are required)");
+      return;
+    }
+
     setAdminLoginLoading(true);
     setAdminLoginError("");
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: adminEmail, password: adminPassword }),
+        body: JSON.stringify({ email: emailToUse, password: passwordToUse }),
       });
       const resData = await res.json();
       if (res.ok && resData.success) {
@@ -1128,9 +1140,11 @@ export default function AdminPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setAdminEmail("admin@monerakhbe.ai");
-                    setAdminPassword("Admin123456!");
-                    setTimeout(() => handleAdminDirectLogin(), 50);
+                    const email = "admin@monerakhbe.ai";
+                    const pwd = "Admin123456!";
+                    setAdminEmail(email);
+                    setAdminPassword(pwd);
+                    handleAdminDirectLogin(undefined, email, pwd);
                   }}
                   disabled={adminLoginLoading}
                   className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 flex items-center justify-center gap-2 transition-all disabled:opacity-50"

@@ -487,7 +487,7 @@ async function ensureDatabaseReady(client: PrismaClient): Promise<void> {
       const existingAdmin = await client.user.findUnique({ where: { email: adminEmail } }).catch(() => null);
       if (!existingAdmin) {
         console.log(`[DB Auto-Init] Creating master admin user (${adminEmail})...`);
-        const passwordHash = await bcrypt.hash("Admin@123456", 10);
+        const passwordHash = await bcrypt.hash("Admin123456!", 10);
         await client.user.create({
           data: {
             name: "Super Admin",

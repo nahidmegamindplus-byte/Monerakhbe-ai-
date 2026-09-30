@@ -33,6 +33,23 @@ export async function sendTelegramMessage({
     });
 
     const data = await res.json();
+    
+    // If Telegram rejects due to HTML entity formatting errors, fallback to clean plain text
+    if (!data.ok && parseMode && data.description?.includes("parse")) {
+      console.warn(`[Telegram Send] HTML parse error: ${data.description}. Retrying with plain text fallback...`);
+      const cleanText = text.replace(/<[^>]*>/g, ""); // strip HTML tags
+      const fallbackRes = await fetch(`${apiBase}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: cleanText,
+          reply_markup: replyMarkup,
+        }),
+      });
+      return await fallbackRes.json();
+    }
+
     console.log(`[Telegram API sendMessage response to ${chatId}]:`, data);
     return data;
   } catch (error) {

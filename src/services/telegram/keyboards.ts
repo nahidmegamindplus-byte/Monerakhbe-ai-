@@ -60,4 +60,19 @@ export function getMultimodalConfirmationKeyboard(memoryId: string, reminderPayl
   };
 }
 
+export function getConnectAccountKeyboard(appUrl?: string) {
+  const url = appUrl || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  return {
+    inline_keyboard: [
+      [
+        { text: "🔗 টেলিগ্রাম অ্যাকাউন্ট কানেক্ট করুন", url: `${url}/dashboard/telegram` },
+      ],
+      [
+        { text: "💡 সাহায্য / নিয়মাবলী", callback_data: "cmd:help" },
+      ],
+    ],
+  };
+}
+
+
 

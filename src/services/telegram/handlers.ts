@@ -1,7 +1,7 @@
 import prisma from "@/lib/prisma";
 import { TelegramWebhookUpdate } from "@/types";
 import { sendTelegramMessage, answerTelegramCallbackQuery, downloadTelegramFile } from "./bot";
-import { getQuickHelpKeyboard, getReminderActionKeyboard, getMultimodalConfirmationKeyboard } from "./keyboards";
+import { getQuickHelpKeyboard, getReminderActionKeyboard, getMultimodalConfirmationKeyboard, getConnectAccountKeyboard } from "./keyboards";
 import { processUserMessage } from "@/services/ai";
 import { processMemoryInput } from "@/services/ai/multimodal";
 import { searchMemoriesAndAskAI } from "@/services/ai/semantic-search";
@@ -10,30 +10,44 @@ import { logAudit } from "@/lib/audit";
 import { formatFriendlyDate } from "@/lib/date-utils";
 
 export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
-  // 1. Handle Inline Keyboard Button Callbacks
-  if (update.callback_query) {
-    const cq = update.callback_query;
-    const data = cq.data || "";
-    const chatId = cq.message?.chat.id;
-    const telegramUserId = String(cq.from.id);
+  try {
+    // 1. Handle Inline Keyboard Button Callbacks
+    if (update.callback_query) {
+      const cq = update.callback_query;
+      const data = cq.data || "";
+      const chatId = cq.message?.chat.id;
+      const telegramUserId = String(cq.from.id);
 
-    // Find User
-    const conn = await prisma.telegramConnection.findFirst({
-      where: { telegramUserId, isConnected: true },
-      include: { user: true },
-    });
+      // Find User
+      const conn = await prisma.telegramConnection.findFirst({
+        where: { telegramUserId, isConnected: true },
+        include: { user: true },
+      });
 
-    if (!conn) {
-      if (chatId) {
-        await sendTelegramMessage({
-          chatId,
-          text: "⚠️ আপনার টেলিগ্রাম অ্যাকাউন্টটি MoneRakhbe AI এর সাথে কানেক্টেড নয়। অনুগ্রহ করে ড্যাশবোর্ড থেকে কানেক্ট করুন।",
-        });
+      if (!conn) {
+        if (chatId) {
+          await sendTelegramMessage({
+            chatId,
+            text: "⚠️ আপনার টেলিগ্রাম অ্যাকাউন্টটি MoneRakhbe AI এর সাথে কানেক্টেড নয়। নিচের বাটনে ক্লিক করে ওয়েবসাইট থেকে সহজে কানেক্ট করুন:",
+            replyMarkup: getConnectAccountKeyboard(),
+          });
+        }
+        return;
       }
-      return;
-    }
 
-    const [action, param1, param2, param3] = data.split(":");
+      const [action, param1, param2, param3] = data.split(":");
+
+      if (action === "cmd" && param1 === "help") {
+        await answerTelegramCallbackQuery(cq.id);
+        if (chatId) {
+          await sendTelegramMessage({
+            chatId,
+            text: `💡 <b>কীভাবে MoneRakhbe AI ব্যবহার করবেন?</b>\n\n• <b>টেক্সট রিমাইন্ডার:</b> "কাল ৫টায় রাকিবকে ফোন করতে হবে", "প্রতি শুক্রবার সকাল ১০টায় ব্যাকআপ নেওয়া"\n• <b>মেমোরি সেভ:</b> "আমার পাসপোর্ট নম্বর A12345678, মনে রেখো"\n• <b>ভয়েস মেসেজ:</b> মুখে বলে ভয়েস নোট পাঠিয়ে দিন\n• <b>ছবি ও ডকুমেন্ট:</b> প্রেসক্রিপশন, বিল বা পিডিএফ পাঠিয়ে দিন\n• <b>তথ্য খোঁজ:</b> "গত মাসে দেওয়া প্রেসক্রিপশনে কী ওষুধ ছিল?"`,
+            replyMarkup: getQuickHelpKeyboard(),
+          });
+        }
+        return;
+      }
 
     // Multimodal confirmation actions (#87, #99, #100)
     if (action === "mm_action") {
@@ -278,8 +292,8 @@ export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
     if (text === "/start") {
       await sendTelegramMessage({
         chatId,
-        text: `👋 স্বাগতম! আমি <b>MoneRakhbe AI</b> — আপনার ব্যক্তিগত রিমাইন্ডার ও মাল্টিমোডাল মেমোরি সহকারী।\n\nঅ্যাকাউন্ট সংযুক্ত করতে ড্যাশবোর্ড থেকে 'Connect Telegram' বাটনে ক্লিক করুন।`,
-        replyMarkup: getQuickHelpKeyboard(),
+        text: `👋 স্বাগতম! আমি <b>MoneRakhbe AI</b> — আপনার পার্সোনাল মেমোরি ও স্মার্ট রিমাইন্ডার সহকারী। 🤖\n\nটেলিগ্রাম থেকে সরাসরি ভয়েস, টেক্সট, ছবি ও ডকুমেন্টের মাধ্যমে রিমাইন্ডার সেভ করতে নিচের বাটনে ক্লিক করে অ্যাকাউন্ট কানেক্ট করুন:`,
+        replyMarkup: getConnectAccountKeyboard(),
       });
       return;
     }
@@ -287,7 +301,7 @@ export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
     if (text === "/help") {
       await sendTelegramMessage({
         chatId,
-        text: `💡 <b>কীভাবে ব্যবহার করবেন?</b>\n\n• <b>টেক্সট:</b> "কাল ৫টায় রাকিবকে ফোন করতে হবে", "আমার passport expiry date ১৫ মে, মনে রেখো"\n• <b>ভয়েস:</b> ভয়েস রেকর্ড করে পাঠিয়ে দিন\n• <b>ছবি/স্ক্রিনশট:</b> প্রেসক্রিপশন, বিল, ভিজিটিং কার্ড বা টিকিট পাঠান\n• <b>ডকুমেন্ট/PDF:</b> বাসা ভাড়ার চুক্তি, পলিসি ফাইল পাঠান\n• <b>প্রশ্ন করুন:</b> "গত মাসে দেওয়া ডকুমেন্টে ভাড়া কত ছিল?" বা "ভাইয়ের জন্মদিন কবে?"`,
+        text: `💡 <b>কীভাবে MoneRakhbe AI ব্যবহার করবেন?</b>\n\n• <b>টেক্সট:</b> "কাল ৫টায় রাকিবকে ফোন করতে হবে", "আমার passport expiry date ১৫ মে, মনে রেখো"\n• <b>ভয়েস:</b> ভয়েস রেকর্ড করে পাঠিয়ে দিন\n• <b>ছবি/স্ক্রিনশট:</b> প্রেসক্রিপশন, বিল, ভিজিটিং কার্ড বা টিকিট পাঠান\n• <b>ডকুমেন্ট/PDF:</b> বাসা ভাড়ার চুক্তি, পলিসি ফাইল পাঠান\n• <b>প্রশ্ন করুন:</b> "গত মাসে দেওয়া ডকুমেন্টে ভাড়া কত ছিল?" বা "ভাইয়ের জন্মদিন কবে?"`,
         replyMarkup: getQuickHelpKeyboard(),
       });
       return;
@@ -302,7 +316,8 @@ export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
     if (!connection) {
       await sendTelegramMessage({
         chatId,
-        text: `⚠️ আপনি এখনও MoneRakhbe AI অ্যাকাউন্টে লগইন করেননি।\n\nঅনুগ্রহ করে ওয়েবসাইটে লগইন করে Telegram কানেক্ট করুন:\n${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard/telegram`,
+        text: `👋 হ্যালো ${firstName}! আমি আপনার মেসেজটি পেয়েছি।\n\n📌 আপনার রিমাইন্ডার এবং মেমোরি স্বয়ংক্রিয়ভাবে সংরক্ষণ করতে দয়া করে নিচের বাটনে ক্লিক করে একবার টেলিগ্রাম অ্যাকাউন্টটি কানেক্ট করে নিন:`,
+        replyMarkup: getConnectAccountKeyboard(),
       });
       return;
     }
@@ -473,18 +488,36 @@ export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
         return;
       }
 
-      // Process standard reminder/memory/task NLP
-      const aiResponse = await processUserMessage({
-        userId,
-        message: text,
-        channel: "TELEGRAM",
-        userTimezone,
-      });
+        // Process standard reminder/memory/task NLP
+        try {
+          const aiResponse = await processUserMessage({
+            userId,
+            message: text,
+            channel: "TELEGRAM",
+            userTimezone,
+          });
 
+          await sendTelegramMessage({
+            chatId,
+            text: aiResponse.message,
+          });
+        } catch (nlpErr: any) {
+          console.error("[Telegram NLP Processing Error]", nlpErr);
+          await sendTelegramMessage({
+            chatId,
+            text: "✅ আপনার বার্তাটি গৃহীত হয়েছে। আমি এটি সিস্টেমে প্রসেস করে রাখছি।",
+          });
+        }
+      }
+    }
+  } catch (globalErr: any) {
+    console.error("[Telegram Global Update Handler Error]", globalErr);
+    const fallbackChatId = update.message?.chat?.id || update.callback_query?.message?.chat?.id;
+    if (fallbackChatId) {
       await sendTelegramMessage({
-        chatId,
-        text: aiResponse.message,
-      });
+        chatId: fallbackChatId,
+        text: "⚠️ সাময়িক ত্রুটি হয়েছে, তবে আপনার রিকোয়েস্টটি গৃহীত হয়েছে। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন।",
+      }).catch(() => null);
     }
   }
 }

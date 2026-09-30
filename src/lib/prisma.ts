@@ -405,23 +405,28 @@ async function ensureDatabaseReady(client: PrismaClient): Promise<void> {
 
   initPromise = (async () => {
     try {
-      // Check if users table exists
-      const tables: any[] = await client.$queryRawUnsafe(
-        `SELECT name FROM sqlite_master WHERE type='table' AND name='users'`
-      ).catch(() => []);
+      const dbUrl = process.env.DATABASE_URL || "";
+      const isSqlite = dbUrl.startsWith("file:") || dbUrl.includes("sqlite");
 
-      const needsSchema = !tables || tables.length === 0;
+      if (isSqlite) {
+        // Check if users table exists in SQLite
+        const tables: any[] = await client.$queryRawUnsafe(
+          `SELECT name FROM sqlite_master WHERE type='table' AND name='users'`
+        ).catch(() => []);
 
-      if (needsSchema) {
-        console.log("[DB Auto-Init] Initializing SQLite database schema...");
-        for (const statement of SCHEMA_STATEMENTS) {
-          try {
-            await client.$executeRawUnsafe(statement);
-          } catch (err: any) {
-            console.warn("[DB Auto-Init] Statement notice:", err.message);
+        const needsSchema = !tables || tables.length === 0;
+
+        if (needsSchema) {
+          console.log("[DB Auto-Init] Initializing SQLite database schema...");
+          for (const statement of SCHEMA_STATEMENTS) {
+            try {
+              await client.$executeRawUnsafe(statement);
+            } catch (err: any) {
+              console.warn("[DB Auto-Init] Statement notice:", err.message);
+            }
           }
+          console.log("[DB Auto-Init] Schema created successfully.");
         }
-        console.log("[DB Auto-Init] Schema created successfully.");
       }
 
       // Ensure Plans exist

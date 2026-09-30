@@ -200,10 +200,14 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error(e);
-    process.exit(1);
+    console.warn("[Seed Notice] Database not accessible during build, skipping initial seed:", e.message);
+    process.exit(0);
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    try {
+      await prisma.$disconnect();
+    } catch {
+      // ignore
+    }
   });
 

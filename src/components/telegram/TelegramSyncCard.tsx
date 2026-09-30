@@ -102,6 +102,32 @@ export default function TelegramSyncCard() {
     }
   };
 
+  const [syncingWebhook, setSyncingWebhook] = useState(false);
+  const [webhookStatus, setWebhookStatus] = useState<string | null>(null);
+
+  const handleSyncWebhook = async () => {
+    setSyncingWebhook(true);
+    setWebhookStatus(null);
+    try {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const res = await fetch("/api/telegram/setup-webhook", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appUrl: origin }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setWebhookStatus("✅ টেলিগ্রাম বট সফলভাবে সক্রিয় ও সিঙ্ক হয়েছে!");
+      } else {
+        setWebhookStatus(`⚠️ ${json.message || json.warning || "অ্যাক্টিভেশন সম্পন্ন হতে HTTPS প্রয়োজন"}`);
+      }
+    } catch (err: any) {
+      setWebhookStatus("❌ সিঙ্ক করতে সমস্যা হয়েছে: " + err.message);
+    } finally {
+      setSyncingWebhook(false);
+    }
+  };
+
   const handleCopy = () => {
     if (data?.deepLink) {
       navigator.clipboard.writeText(data.deepLink);
@@ -122,6 +148,13 @@ export default function TelegramSyncCard() {
 
   return (
     <div className="space-y-4">
+      {webhookStatus && (
+        <div className="p-3.5 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-semibold flex items-center justify-between">
+          <span>{webhookStatus}</span>
+          <button onClick={() => setWebhookStatus(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+      )}
+
       {/* Bot Token Configuration Banner if missing */}
       {(!botConfig?.hasToken || showConfigForm) && (
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-purple-200 shadow-md space-y-4">
@@ -225,7 +258,7 @@ export default function TelegramSyncCard() {
             </p>
           </div>
 
-          <div>
+          <div className="flex flex-col items-end gap-2.5">
             {data?.isConnected ? (
               <div className="flex items-center gap-3">
                 <a
@@ -276,17 +309,19 @@ export default function TelegramSyncCard() {
                     টোকেন দিয়ে বট সেটআপ করুন
                   </button>
                 )}
-
-                {botConfig?.hasToken && (
-                  <button
-                    onClick={() => setShowConfigForm(!showConfigForm)}
-                    className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-medium"
-                    title="বট টোকেন পরিবর্তন করুন"
-                  >
-                    ⚙️
-                  </button>
-                )}
               </div>
+            )}
+
+            {/* 1-Click Bot Webhook Sync Button */}
+            {botConfig?.hasToken && (
+              <button
+                onClick={handleSyncWebhook}
+                disabled={syncingWebhook}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-indigo-200 text-[11px] font-semibold transition-all border border-white/10"
+              >
+                <Sparkles className="w-3 h-3 text-amber-400" />
+                <span>{syncingWebhook ? "সিঙ্ক হচ্ছে..." : "⚡ বট অ্যাক্টিভ ও সিঙ্ক করুন"}</span>
+              </button>
             )}
           </div>
         </div>

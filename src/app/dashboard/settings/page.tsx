@@ -131,7 +131,20 @@ export default function SettingsPage() {
           apiKey: geminiKey.trim() || undefined,
         }),
       });
-      const data = await res.json();
+
+      const contentType = res.headers.get("content-type") || "";
+      let data: any = {};
+
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const rawText = await res.text().catch(() => "");
+        if (res.status === 404 || rawText.includes("<!DOCTYPE") || rawText.includes("<html")) {
+          throw new Error("নতুন আপডেট কার্যকর হতে Hostinger থেকে 'Restart Application' দিন।");
+        }
+        throw new Error(rawText || `সার্ভার ত্রুটি (${res.status})`);
+      }
+
       if (data.success) {
         setTestResult({
           success: true,

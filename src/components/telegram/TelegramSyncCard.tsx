@@ -116,7 +116,19 @@ export default function TelegramSyncCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
-      const json = await res.json();
+
+      const contentType = res.headers.get("content-type") || "";
+      let json: any = {};
+      if (contentType.includes("application/json")) {
+        json = await res.json();
+      } else {
+        const rawText = await res.text().catch(() => "");
+        if (res.status === 404 || rawText.includes("<!DOCTYPE") || rawText.includes("<html")) {
+          throw new Error("নতুন আপডেট কার্যকর হতে Hostinger থেকে 'Restart Application' দিন।");
+        }
+        throw new Error(rawText || `সার্ভার ত্রুটি (${res.status})`);
+      }
+
       if (json.success) {
         setTestResult({ success: true, message: json.message });
       } else {
@@ -139,7 +151,19 @@ export default function TelegramSyncCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ appUrl: origin }),
       });
-      const json = await res.json();
+
+      const contentType = res.headers.get("content-type") || "";
+      let json: any = {};
+      if (contentType.includes("application/json")) {
+        json = await res.json();
+      } else {
+        const rawText = await res.text().catch(() => "");
+        if (res.status === 404 || rawText.includes("<!DOCTYPE") || rawText.includes("<html")) {
+          throw new Error("নতুন আপডেট কার্যকর হতে Hostinger থেকে 'Restart Application' দিন।");
+        }
+        throw new Error(rawText || `সার্ভার ত্রুটি (${res.status})`);
+      }
+
       if (json.success) {
         setWebhookStatus("✅ টেলিগ্রাম বট সফলভাবে সক্রিয় ও সিঙ্ক হয়েছে!");
       } else {

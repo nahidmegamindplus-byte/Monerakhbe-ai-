@@ -104,6 +104,30 @@ export default function TelegramSyncCard() {
 
   const [syncingWebhook, setSyncingWebhook] = useState(false);
   const [webhookStatus, setWebhookStatus] = useState<string | null>(null);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/telegram/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setTestResult({ success: true, message: json.message });
+      } else {
+        setTestResult({ success: false, message: json.error || "টেস্ট সম্পন্ন করা যায়নি।" });
+      }
+    } catch (err: any) {
+      setTestResult({ success: false, message: "সার্ভার সংযোগে ত্রুটি: " + err.message });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
 
   const handleSyncWebhook = async () => {
     setSyncingWebhook(true);
@@ -312,19 +336,70 @@ export default function TelegramSyncCard() {
               </div>
             )}
 
-            {/* 1-Click Bot Webhook Sync Button */}
+            {/* 1-Click Bot Webhook Sync & Test Buttons */}
             {botConfig?.hasToken && (
-              <button
-                onClick={handleSyncWebhook}
-                disabled={syncingWebhook}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-indigo-200 text-[11px] font-semibold transition-all border border-white/10"
-              >
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                <span>{syncingWebhook ? "সিঙ্ক হচ্ছে..." : "⚡ বট অ্যাক্টিভ ও সিঙ্ক করুন"}</span>
-              </button>
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                {/* Live Test Connection Button */}
+                <button
+                  onClick={handleTestConnection}
+                  disabled={testingConnection}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[11px] font-semibold transition-all border border-emerald-500/30 hover:scale-102"
+                  title="বট কানেকশন এবং মেসেজ ডেলিভারি টেস্ট করুন"
+                >
+                  <Sparkles className="w-3 h-3 text-emerald-400" />
+                  <span>{testingConnection ? "টেস্ট হচ্ছে..." : "🧪 টেস্ট মেসেজ পাঠান (Test Connection)"}</span>
+                </button>
+
+                {/* 1-Click Sync Webhook */}
+                <button
+                  onClick={handleSyncWebhook}
+                  disabled={syncingWebhook}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-indigo-200 text-[11px] font-semibold transition-all border border-white/10"
+                  title="হোস্টিং সার্ভারের সাথে টেলিগ্রাম বট ওয়েবহুক সিঙ্ক করুন"
+                >
+                  <RefreshCw className={`w-3 h-3 text-sky-400 ${syncingWebhook ? "animate-spin" : ""}`} />
+                  <span>{syncingWebhook ? "সিঙ্ক হচ্ছে..." : "⚡ ওয়েবহুক সিঙ্ক"}</span>
+                </button>
+
+                {/* Change Bot Token Button */}
+                <button
+                  onClick={() => setShowConfigForm(!showConfigForm)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/15 text-slate-300 text-[11px] font-medium transition-all"
+                  title="বট টোকেন পরিবর্তন বা আপডেট করুন"
+                >
+                  <Key className="w-3 h-3" />
+                  <span>টোকেন পরিবর্তন</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
+
+        {/* Test Result Live Banner */}
+        {testResult && (
+          <div
+            className={`mt-4 p-3.5 rounded-2xl border text-xs font-semibold flex items-center justify-between transition-all animate-fadeIn ${
+              testResult.success
+                ? "bg-emerald-950/60 border-emerald-500/40 text-emerald-200"
+                : "bg-rose-950/60 border-rose-500/40 text-rose-200"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {testResult.success ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              )}
+              <span>{testResult.message}</span>
+            </div>
+            <button
+              onClick={() => setTestResult(null)}
+              className="text-white/60 hover:text-white text-sm px-1.5 py-0.5"
+            >
+              ✕
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -566,61 +566,15 @@ async function ensureDatabaseReady(client: PrismaClient): Promise<void> {
   return initPromise;
 }
 
-// Serverless (Vercel, Netlify, AWS Lambda) SQLite handling
+// Ensure database URL matches PostgreSQL protocol for Prisma schema validation
 function getDatabaseUrl(): string {
-  const isServerless = Boolean(
-    process.env.VERCEL || 
-    process.env.NETLIFY || 
-    process.env.AWS_LAMBDA_FUNCTION_NAME || 
-    process.env.LAMBDA_TASK_ROOT
-  );
-  const currentUrl = process.env.DATABASE_URL || "file:./dev.db";
+  let currentUrl = (process.env.DATABASE_URL || "").trim();
 
-  if (isServerless && currentUrl.startsWith("file:")) {
-    const tmpDbPath = "/tmp/dev.db";
-    
-    // Check if tmp db already exists and has data
-    let needsCopy = true;
-    try {
-      if (fs.existsSync(tmpDbPath) && fs.statSync(tmpDbPath).size > 0) {
-        needsCopy = false;
-      }
-    } catch {
-      needsCopy = true;
-    }
-
-    if (needsCopy) {
-      const potentialSources = [
-        path.join(process.cwd(), "prisma", "dev.db"),
-        path.join(process.cwd(), "dev.db"),
-        path.join("/var/task", "prisma", "dev.db"),
-        path.join("/var/task", "dev.db"),
-        path.resolve("./prisma/dev.db"),
-        path.resolve("./dev.db"),
-      ];
-
-      let copied = false;
-      for (const src of potentialSources) {
-        try {
-          if (fs.existsSync(src) && fs.statSync(src).size > 0) {
-            fs.copyFileSync(src, tmpDbPath);
-            console.log(`[Prisma Init] Copied seed DB from ${src} to ${tmpDbPath} (${fs.statSync(tmpDbPath).size} bytes)`);
-            copied = true;
-            break;
-          }
-        } catch (err) {
-          console.warn(`[Prisma Init] Candidate ${src} failed to copy:`, err);
-        }
-      }
-
-      if (!copied) {
-        console.warn("[Prisma Init] No pre-seeded SQLite DB found in candidates. Connecting to /tmp/dev.db directly.");
-      }
-    }
-
-    const finalUrl = `file:${tmpDbPath}`;
-    process.env.DATABASE_URL = finalUrl;
-    return finalUrl;
+  // If missing or legacy SQLite file: path is passed, ensure standard postgresql protocol
+  if (!currentUrl || (!currentUrl.startsWith("postgresql://") && !currentUrl.startsWith("postgres://"))) {
+    console.warn("[Prisma Init] DATABASE_URL was missing or invalid for PostgreSQL provider. Defaulting to Supabase PostgreSQL configuration.");
+    currentUrl = "postgresql://postgres:[YOUR-PASSWORD]@db.ialbrmbfummsbtywpsfg.supabase.co:5432/postgres";
+    process.env.DATABASE_URL = currentUrl;
   }
 
   return currentUrl;

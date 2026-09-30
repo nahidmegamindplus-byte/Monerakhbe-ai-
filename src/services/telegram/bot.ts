@@ -1,5 +1,24 @@
 import { formatFriendlyDate } from "@/lib/date-utils";
 import { getReminderActionKeyboard, getFollowUpKeyboard } from "./keyboards";
+import prisma from "@/lib/prisma";
+
+export async function getTelegramBotToken(): Promise<string> {
+  if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN.trim()) {
+    return process.env.TELEGRAM_BOT_TOKEN.trim();
+  }
+  try {
+    const dbConfig = await prisma.paymentMethodConfig.findUnique({
+      where: { code: "system_telegram_bot" },
+    });
+    if (dbConfig && dbConfig.accountNumber) {
+      process.env.TELEGRAM_BOT_TOKEN = dbConfig.accountNumber;
+      return dbConfig.accountNumber;
+    }
+  } catch (err) {
+    // ignore
+  }
+  return "";
+}
 
 export async function sendTelegramMessage({
   chatId,
@@ -12,7 +31,7 @@ export async function sendTelegramMessage({
   replyMarkup?: any;
   parseMode?: "HTML" | "Markdown" | "MarkdownV2";
 }) {
-  const token = process.env.TELEGRAM_BOT_TOKEN || "";
+  const token = await getTelegramBotToken();
   if (!token) {
     console.log(`[Telegram Mock Bot Output to ${chatId}]:\n${text}`);
     return { ok: true, mock: true };
@@ -67,7 +86,7 @@ export async function sendTelegramMessageDirect(
 }
 
 export async function answerTelegramCallbackQuery(callbackQueryId: string, text?: string) {
-  const token = process.env.TELEGRAM_BOT_TOKEN || "";
+  const token = await getTelegramBotToken();
   if (!token) return { ok: true, mock: true };
 
   const apiBase = `https://api.telegram.org/bot${token}`;
@@ -118,7 +137,7 @@ export async function sendOverdueTelegramFollowUp({
 }
 
 export async function downloadTelegramFile(fileId: string): Promise<{ buffer: Buffer; fileName: string; mimeType: string } | null> {
-  const token = process.env.TELEGRAM_BOT_TOKEN || "";
+  const token = await getTelegramBotToken();
   if (!token) return null;
 
   try {

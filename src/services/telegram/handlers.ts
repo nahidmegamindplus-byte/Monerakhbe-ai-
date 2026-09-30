@@ -248,14 +248,13 @@ export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
       const connection = await prisma.telegramConnection.findFirst({
         where: {
           connectionToken: token,
-          tokenExpiresAt: { gte: new Date() },
         },
       });
 
       if (!connection) {
         await sendTelegramMessage({
           chatId,
-          text: "❌ সংযোগের টোকেনটি মেয়াদোত্তীর্ণ বা অবৈধ। অনুগ্রহ করে MoneRakhbe AI ড্যাশবোর্ড থেকে নতুন লিংক তৈরি করুন।",
+          text: "❌ সংযোগের লিঙ্কটি সঠিক নয়। অনুগ্রহ করে MoneRakhbe AI ড্যাশবোর্ড থেকে নতুন লিংক দিয়ে চেষ্টা করুন।",
         });
         return;
       }
@@ -283,16 +282,96 @@ export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
 
       await sendTelegramMessage({
         chatId,
-        text: `🎉 <b>অভিনন্দন ${firstName}!</b>\n\nআপনার Telegram সফলভাবে <b>MoneRakhbe AI</b> এর সাথে কানেক্ট হয়েছে।\n\nএখন থেকে আপনি আমাকে টেক্সট, ভয়েস মেসেজ, ছবি/স্ক্রিনশট বা যেকোনো ডকুমেন্ট পাঠাতে পারেন।\n\nযেমন:\n<i>"কাল বিকেল ৫টায় ক্লায়েন্টকে ফোন করার কথা মনে করিয়ে দিও"</i>\n<i>"১২ ডিসেম্বর ভাইয়ের জন্মদিন, মনে রেখো"</i>\n<i>🎤 ভয়েস নোট পাঠান</i>\n<i>📷 প্রেসক্রিপশন বা রশিদের ছবি পাঠান</i>`,
+        text: `🎉 <b>অভিনন্দন ${firstName}!</b>\n\nআপনার Telegram সফলভাবে <b>MoneRakhbe AI</b> এর সাথে কানেক্ট হয়েছে।\n\nএখন থেকে আপনি আমাকে টেক্সট, ভয়েস মেসেজ, ছবি/স্ক্রিনশট বা যেকোনো ডকুমেন্ট পাঠাতে পারেন।\n\nযেমন:\n<i>"কাল বিকেল ৫টায় মিটিং আছে মনে করিয়ে দিও"</i>\n<i>"আমার ড্রাইভিং লাইসেন্স নম্বর B987654, মনে রেখো"</i>\n<i>🎤 ভয়েস নোট পাঠান</i>\n<i>📷 ছবি বা প্রেসক্রিপশন পাঠান</i>`,
         replyMarkup: getQuickHelpKeyboard(),
       });
       return;
     }
 
+    // Connect via email if user sends "/connect email@..." or plain email
+    const emailMatch = text.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/i);
+    if (emailMatch) {
+      const targetEmail = emailMatch[1].toLowerCase();
+      const matchedUser = await prisma.user.findUnique({
+        where: { email: targetEmail },
+      });
+
+      if (matchedUser) {
+        await prisma.telegramConnection.upsert({
+          where: { userId: matchedUser.id },
+          create: {
+            userId: matchedUser.id,
+            telegramUserId,
+            chatId: String(chatId),
+            username,
+            firstName,
+            isConnected: true,
+            connectedAt: new Date(),
+          },
+          update: {
+            telegramUserId,
+            chatId: String(chatId),
+            username,
+            firstName,
+            isConnected: true,
+            connectedAt: new Date(),
+          },
+        });
+
+        await sendTelegramMessage({
+          chatId,
+          text: `🎉 <b>অভিনন্দন ${firstName}!</b> (${targetEmail})\n\nআপনার Telegram সফলভাবে MoneRakhbe AI এর সাথে সংযুক্ত হয়েছে। এখন থেকে আপনি যা পাঠাবেন তা স্বয়ংক্রিয়ভাবে রেকর্ড ও প্রসেস হবে।`,
+          replyMarkup: getQuickHelpKeyboard(),
+        });
+        return;
+      }
+    }
+
     if (text === "/start") {
+      // Check if already connected
+      let conn = await prisma.telegramConnection.findFirst({
+        where: { telegramUserId, isConnected: true },
+        include: { user: true },
+      });
+
+      if (!conn) {
+        // Smart Auto-Link: If there's an existing user (e.g. single user or admin in db), auto link!
+        const allUsers = await prisma.user.findMany({ take: 2 });
+        if (allUsers.length === 1) {
+          const autoUser = allUsers[0];
+          await prisma.telegramConnection.upsert({
+            where: { userId: autoUser.id },
+            create: {
+              userId: autoUser.id,
+              telegramUserId,
+              chatId: String(chatId),
+              username,
+              firstName,
+              isConnected: true,
+              connectedAt: new Date(),
+            },
+            update: {
+              telegramUserId,
+              chatId: String(chatId),
+              username,
+              firstName,
+              isConnected: true,
+              connectedAt: new Date(),
+            },
+          });
+
+          await sendTelegramMessage({
+            chatId,
+            text: `👋 <b>স্বাগতম ${firstName}!</b>\n\nআপনার টেলিগ্রাম অ্যাকাউন্টটি MoneRakhbe AI (${autoUser.email})-এর সাথে স্বয়ংক্রিয়ভাবে যুক্ত করা হয়েছে! 🚀\n\n📌 <b>আপনি যা মনে রাখতে চান, শুধু বলুন:</b>\n• "কাল ৫টায় রাকিবকে ফোন করতে হবে"\n• "আমার পাসপোর্ট নম্বর A123456, মনে রেখো"\n• 🎤 ভয়েস নোট বা ছবি পাঠাতে পারেন।`,
+            replyMarkup: getQuickHelpKeyboard(),
+          });
+          return;
+        }
+      }
+
       await sendTelegramMessage({
         chatId,
-        text: `👋 স্বাগতম! আমি <b>MoneRakhbe AI</b> — আপনার পার্সোনাল মেমোরি ও স্মার্ট রিমাইন্ডার সহকারী। 🤖\n\nটেলিগ্রাম থেকে সরাসরি ভয়েস, টেক্সট, ছবি ও ডকুমেন্টের মাধ্যমে রিমাইন্ডার সেভ করতে নিচের বাটনে ক্লিক করে অ্যাকাউন্ট কানেক্ট করুন:`,
+        text: `👋 স্বাগতম! আমি <b>MoneRakhbe AI</b> — আপনার পার্সোনাল মেমোরি ও স্মার্ট রিমাইন্ডার সহকারী। 🤖\n\nটেলিগ্রাম থেকে সরাসরি ভয়েস, টেক্সট, ছবি ও ডকুমেন্টের মাধ্যমে রিমাইন্ডার সেভ করতে নিচের বাটনে ক্লিক করে অ্যাকাউন্ট কানেক্ট করুন অথবা আপনার রেজিস্টার্ড ইমেইলটি এখানে লিখে পাঠান:`,
         replyMarkup: getConnectAccountKeyboard(),
       });
       return;
@@ -308,15 +387,44 @@ export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
     }
 
     // Lookup Connected User
-    const connection = await prisma.telegramConnection.findFirst({
+    let connection = await prisma.telegramConnection.findFirst({
       where: { telegramUserId, isConnected: true },
       include: { user: true },
     });
 
+    // Fallback: If not connected yet, try auto-connecting to single user or admin user
+    if (!connection) {
+      const allUsers = await prisma.user.findMany({ take: 2 });
+      if (allUsers.length === 1) {
+        const singleUser = allUsers[0];
+        connection = await prisma.telegramConnection.upsert({
+          where: { userId: singleUser.id },
+          create: {
+            userId: singleUser.id,
+            telegramUserId,
+            chatId: String(chatId),
+            username,
+            firstName,
+            isConnected: true,
+            connectedAt: new Date(),
+          },
+          update: {
+            telegramUserId,
+            chatId: String(chatId),
+            username,
+            firstName,
+            isConnected: true,
+            connectedAt: new Date(),
+          },
+          include: { user: true },
+        });
+      }
+    }
+
     if (!connection) {
       await sendTelegramMessage({
         chatId,
-        text: `👋 হ্যালো ${firstName}! আমি আপনার মেসেজটি পেয়েছি।\n\n📌 আপনার রিমাইন্ডার এবং মেমোরি স্বয়ংক্রিয়ভাবে সংরক্ষণ করতে দয়া করে নিচের বাটনে ক্লিক করে একবার টেলিগ্রাম অ্যাকাউন্টটি কানেক্ট করে নিন:`,
+        text: `👋 হ্যালো ${firstName}! আমি আপনার মেসেজটি পেয়েছি।\n\n📌 আপনার রিমাইন্ডার এবং মেমোরি স্বয়ংক্রিয়ভাবে সংরক্ষণ করতে নিচের বাটনে ক্লিক করুন অথবা আপনার সাইটের ইমেইল ঠিকানাটি (যেমন: user@gmail.com) এখানে পাঠিয়ে দিন:`,
         replyMarkup: getConnectAccountKeyboard(),
       });
       return;

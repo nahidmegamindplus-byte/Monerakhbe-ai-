@@ -130,9 +130,30 @@ export async function POST(req: NextRequest) {
         console.log("[Telegram Config] Serverless read-only filesystem detected. Saved to DB & Memory.");
       }
 
+      // 5. Automatically configure Telegram Webhook if live HTTPS domain is available
+      try {
+        const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
+        const proto = req.headers.get("x-forwarded-proto") || (req.nextUrl.protocol.replace(":", ""));
+        const detectedUrl = host ? `${proto}://${host}` : "";
+        const envAppUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+        const activeUrl = detectedUrl.startsWith("https://") ? detectedUrl : envAppUrl.startsWith("https://") ? envAppUrl : "";
+
+        if (activeUrl.startsWith("https://")) {
+          const webhookUrl = `${activeUrl.replace(/\/$/, "")}/api/telegram/webhook`;
+          const secret = process.env.TELEGRAM_WEBHOOK_SECRET || "monerakhbe_webhook_secret_key";
+          await fetch(
+            `https://api.telegram.org/bot${cleanToken}/setWebhook?url=${encodeURIComponent(
+              webhookUrl
+            )}&secret_token=${encodeURIComponent(secret)}&drop_pending_updates=true`
+          );
+        }
+      } catch (whErr) {
+        console.warn("[Telegram Config Auto-Webhook Warning]", whErr);
+      }
+
       return NextResponse.json({
         success: true,
-        message: `বট সফলভাবে কনফিগার হয়েছে: @${actualUsername}`,
+        message: `বট সফলভাবে কনফিগার ও সিঙ্ক হয়েছে: @${actualUsername}`,
         botUsername: actualUsername,
       });
     } catch (apiErr: any) {

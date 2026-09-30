@@ -98,8 +98,32 @@ export async function GET(req: NextRequest) {
         },
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("[Auth/Me Error]", error);
+    try {
+      const session = await getSessionUser(req);
+      if (session) {
+        return NextResponse.json({
+          success: true,
+          user: {
+            id: session.id,
+            name: session.name || "User",
+            email: session.email,
+            role: session.role,
+            timezone: session.timezone || "Asia/Dhaka",
+            language: session.language || "bn",
+            plan: session.plan || "FREE",
+            stats: {
+              remindersCount: 0,
+              memoriesCount: 0,
+              pendingTasksCount: 0,
+            },
+          },
+        });
+      }
+    } catch {
+      // fallback
+    }
     return NextResponse.json({ error: "Failed to fetch user session" }, { status: 500 });
   }
 }

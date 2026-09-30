@@ -32,6 +32,8 @@ export default function SettingsPage() {
   const [maskedGeminiKey, setMaskedGeminiKey] = useState("");
   const [savingAiKey, setSavingAiKey] = useState(false);
   const [aiSavedMsg, setAiSavedMsg] = useState("");
+  const [testingKey, setTestingKey] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; reply?: string } | null>(null);
 
   const [savedMsg, setSavedMsg] = useState("");
   const [loading, setLoading] = useState(false);
@@ -118,6 +120,40 @@ export default function SettingsPage() {
     }
   };
 
+  const handleTestGeminiKey = async () => {
+    setTestingKey(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/settings/test-gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: geminiKey.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestResult({
+          success: true,
+          message: data.message,
+          reply: data.reply,
+        });
+      } else {
+        setTestResult({
+          success: false,
+          message: data.error || "টেস্ট সম্পন্ন করা যায়নি।",
+        });
+      }
+    } catch (err: any) {
+      setTestResult({
+        success: false,
+        message: "সার্ভার সংযোগে ত্রুটি: " + err.message,
+      });
+    } finally {
+      setTestingKey(false);
+    }
+  };
+
   const handleExport = (format: "json" | "csv") => {
     window.open(`/api/export?format=${format}`, "_blank");
   };
@@ -199,8 +235,52 @@ export default function SettingsPage() {
                   <Save className="w-3.5 h-3.5" />
                   {savingAiKey ? "সেভ হচ্ছে..." : "API Key সেভ করুন"}
                 </button>
+                <button
+                  type="button"
+                  onClick={handleTestGeminiKey}
+                  disabled={testingKey || (!geminiKey.trim() && !hasGeminiKey)}
+                  className="px-4 py-2.5 rounded-2xl bg-emerald-600/30 hover:bg-emerald-600/40 text-emerald-200 border border-emerald-500/40 font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-40"
+                  title="Gemini API Key ভেরিফাই ও টেস্ট করুন"
+                >
+                  <Sparkles className={`w-3.5 h-3.5 text-emerald-300 ${testingKey ? "animate-spin" : ""}`} />
+                  {testingKey ? "টেস্ট হচ্ছে..." : "🧪 টেস্ট করুন"}
+                </button>
               </div>
             </div>
+
+            {/* Test Result Feedback Banner */}
+            {testResult && (
+              <div
+                className={`p-3.5 rounded-2xl border text-xs font-semibold flex flex-col gap-1.5 transition-all ${
+                  testResult.success
+                    ? "bg-emerald-950/70 border-emerald-500/40 text-emerald-200"
+                    : "bg-rose-950/70 border-rose-500/40 text-rose-200"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {testResult.success ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                    )}
+                    <span>{testResult.message}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTestResult(null)}
+                    className="text-white/60 hover:text-white text-xs px-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {testResult.reply && (
+                  <p className="text-[11px] text-emerald-300/80 italic pl-6 bg-white/5 py-1 px-2 rounded-lg">
+                    AI Response: &ldquo;{testResult.reply}&rdquo;
+                  </p>
+                )}
+              </div>
+            )}
 
             <p className="text-[11px] text-purple-300/70">
               💡 Google AI Studio থেকে আপনার সম্পূর্ণ ফ্রি API Key নিতে পারেন:{" "}

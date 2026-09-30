@@ -566,15 +566,58 @@ async function ensureDatabaseReady(client: PrismaClient): Promise<void> {
   return initPromise;
 }
 
-// Ensure database URL matches PostgreSQL protocol for Prisma schema validation
+// Self-healing database URL resolver (SQLite Zero-Config for Hostinger/Vercel/Local)
 function getDatabaseUrl(): string {
+  const isServerless = Boolean(
+    process.env.VERCEL || 
+    process.env.NETLIFY || 
+    process.env.AWS_LAMBDA_FUNCTION_NAME || 
+    process.env.LAMBDA_TASK_ROOT
+  );
   let currentUrl = (process.env.DATABASE_URL || "").trim();
 
-  // If missing or legacy SQLite file: path is passed, ensure standard postgresql protocol
-  if (!currentUrl || (!currentUrl.startsWith("postgresql://") && !currentUrl.startsWith("postgres://"))) {
-    console.warn("[Prisma Init] DATABASE_URL was missing or invalid for PostgreSQL provider. Defaulting to Supabase PostgreSQL configuration.");
-    currentUrl = "postgresql://postgres:[YOUR-PASSWORD]@db.ialbrmbfummsbtywpsfg.supabase.co:5432/postgres";
+  if (!currentUrl || !currentUrl.startsWith("file:")) {
+    currentUrl = "file:./dev.db";
     process.env.DATABASE_URL = currentUrl;
+  }
+
+  if (isServerless && currentUrl.startsWith("file:")) {
+    const tmpDbPath = "/tmp/dev.db";
+    let needsCopy = true;
+    try {
+      if (fs.existsSync(tmpDbPath) && fs.statSync(tmpDbPath).size > 0) {
+        needsCopy = false;
+      }
+    } catch {
+      needsCopy = true;
+    }
+
+    if (needsCopy) {
+      const potentialSources = [
+        path.join(process.cwd(), "prisma", "dev.db"),
+        path.join(process.cwd(), "dev.db"),
+        path.join("/var/task", "prisma", "dev.db"),
+        path.join("/var/task", "dev.db"),
+        path.resolve("./prisma/dev.db"),
+        path.resolve("./dev.db"),
+      ];
+
+      for (const src of potentialSources) {
+        try {
+          if (fs.existsSync(src) && fs.statSync(src).size > 0) {
+            fs.copyFileSync(src, tmpDbPath);
+            console.log(`[Prisma Init] Copied seed DB from ${src} to ${tmpDbPath} (${fs.statSync(tmpDbPath).size} bytes)`);
+            break;
+          }
+        } catch (err) {
+          console.warn(`[Prisma Init] Candidate ${src} failed to copy:`, err);
+        }
+      }
+    }
+
+    const finalUrl = `file:${tmpDbPath}`;
+    process.env.DATABASE_URL = finalUrl;
+    return finalUrl;
   }
 
   return currentUrl;

@@ -78,10 +78,11 @@ export async function POST(req: NextRequest) {
       plan: user.plan as any,
     });
 
+    const isHttps = req.nextUrl.protocol === "https:" || req.headers.get("x-forwarded-proto") === "https";
     const response = NextResponse.json({ success: true, user, token });
     response.cookies.set("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: isHttps,
       sameSite: "lax",
       maxAge: 30 * 24 * 60 * 60,
       path: "/",

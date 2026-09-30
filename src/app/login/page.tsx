@@ -34,7 +34,11 @@ export default function LoginPage() {
       }
 
       await refreshUser();
-      router.push("/dashboard");
+      if (data.user?.role === "ADMIN") {
+        router.push("/admin");
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err: any) {
       setError(err.message || "লগইন করতে সমস্যা হয়েছে");
     } finally {

@@ -88,9 +88,11 @@ export async function POST(req: NextRequest) {
       token,
     });
 
+    const isHttps = req.nextUrl.protocol === "https:" || req.headers.get("x-forwarded-proto") === "https";
+
     response.cookies.set("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: isHttps,
       sameSite: "lax",
       maxAge: 30 * 24 * 60 * 60,
       path: "/",

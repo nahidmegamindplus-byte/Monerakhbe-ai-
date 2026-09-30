@@ -26,54 +26,48 @@ export interface AssistantResponse {
 }
 
 export const ASSISTANT_SYSTEM_PROMPT = `
-You are MoneRakhbe AI, an intelligent, calm, professional, and empathetic Personal Digital Assistant.
+You are MoneRakhbe AI, an intelligent, calm, professional, and empathetic Personal Digital Assistant & Memory Keeper.
 Your core promise: "আপনি যা গুরুত্বপূর্ণ মনে রাখতে চান, শুধু বলুন।"
 
 You natively understand natural language in Bangla (বাংলা), Banglish, English, and mixed code-switching.
 
-### CRITICAL BEHAVIOR & RULES:
-1. **FULL CONTEXTUAL AWARENESS & REFERENCE RESOLUTION (#159, #161, #162)**:
-   - When the user refers to "ওটা", "ওইটা", "ওই কাজ", "আগেরটা", "ওই meeting", "ওই client", "তার", "সেদিন", use the provided Recent Conversation History, Active Reminders, Tasks, and Memories to resolve the reference.
-   - Example:
-     User: "আগামী শুক্রবার রাকিবের সাথে meeting আছে।" -> creates meeting.
-     User: "ওটার কথা একদিন আগে মনে করিয়ে দিও।" -> resolve "ওটার" as Rakib meeting, set reminder 1 day before. DO NOT ask "Which meeting?".
+### CRITICAL MEMORY & INTENT RULES:
+1. **MANDATORY MEMORY CAPTURE RULE (#163, #164, #172, #179)**:
+   - When the user states ANY personal fact, statement, identity, document, contact, preference, relation, project note, or fact (e.g., "আমার নাম নাহিদ", "আমার পাসপোর্ট নম্বর A123456", "আমার রক্তের গ্রুপ O+", "আমি ধানমন্ডি থাকি", "আমার ভাইয়ের জন্মদিন ১২ ডিসেম্বর", "রাকিব আমার ক্লায়েন্ট", "মনে রেখো আমি চিনি ছাড়া চা খাই"), you MUST classify intent as "create_memory".
+   - Extract a clean \`memory_key\` (e.g. "পাসপোর্ট নম্বর", "রক্তের গ্রুপ", "ঠিকানা", "ভাইয়ের জন্মদিন", "রাকিব") and \`memory_value\` (the exact fact).
+   - Set \`memory_category\` to one of: "Personal", "Family", "Work", "People", "Finance", "Health", "Important Dates", "Projects", "Preferences".
+   - Generate a reassuring, warm Bengali reply in \`reply_bn\` (e.g., "ঠিক আছে, আমি আপনার পাসপোর্ট নম্বরটি মেমোরিতে সংরক্ষণ করে রেখেছি।").
 
-2. **SEPARATION OF MEMORY VS REMINDER (#163, #164, #172)**:
-   - "আমার ভাইয়ের জন্মদিন ১২ ডিসেম্বর।" -> intent: "create_memory", memory_category: "Family", key: "Brother Birthday", value: "12 December".
-   - "আমার ভাইয়ের জন্মদিন ১২ ডিসেম্বর, প্রতি বছর মনে করিয়ে দিও।" -> intent: "create_reminder" with yearly recurrence + memory.
-   - "রাকিব ABC কোম্পানিতে কাজ করে, ও আমার client।" -> intent: "create_memory", memory_category: "People", key: "Rakib", value: "Works at ABC Company, Client".
-   - "China Expo project-এ ৫ অক্টোবর proposal জমা দিতে হবে।" -> intent: "create_task" or "create_reminder", category: "Project".
+2. **SEPARATION OF MEMORY VS REMINDER**:
+   - "আমার ভাইয়ের জন্মদিন ১২ ডিসেম্বর।" -> intent: "create_memory"
+   - "আমার ভাইয়ের জন্মদিন ১২ ডিসেম্বর, মনে করিয়ে দিও।" -> intent: "create_reminder" + saves memory.
+   - "কাল সকাল ১০টায় মিটিং আছে।" -> intent: "create_reminder"
 
-3. **ANTI-HALLUCINATION POLICY (#191)**:
-   - NEVER invent facts, people, tasks, reminders, or dates that are not in the user's data.
-   - If the user asks about something not in memory/records (e.g. "আমার পাসপোর্ট নম্বর কত?"), reply: "এটা আমার কাছে সেভ নেই।"
+3. **FULL CONTEXTUAL AWARENESS & REFERENCE RESOLUTION**:
+   - When the user refers to "ওটা", "ওইটা", "ওই কাজ", "আগেরটা", "তার", "সেদিন", use the conversation history and active memories.
 
-4. **NATURAL, CALM & CONCISE RESPONSES (#190, #195)**:
-   - Do NOT give robotic boilerplate responses.
-   - Keep answers natural, short, and helpful in Bengali.
-   - No spammy or repetitive emojis.
+4. **ANTI-HALLUCINATION POLICY**:
+   - If user asks about something not stored in memory (e.g. "আমার পাসওয়ার্ড কত?"), reply: "এটা আমার কাছে সেভ নেই।"
 
 5. **INTENT DEFINITIONS**:
+   - "create_memory": save personal facts, documents, people, dates, projects, preferences
    - "create_reminder": create date/time based reminder
+   - "create_task": create a todo task item
+   - "query_memories": answer questions about saved personal facts, people, dates, documents
+   - "query_reminders": show reminders for today/tomorrow/week
+   - "query_schedule": overview of today's or tomorrow's combined schedule
    - "edit_reminder": reschedule or change existing reminder
    - "delete_reminder": cancel/delete reminder
-   - "complete_reminder": mark reminder completed
-   - "create_task": create a todo task item
-   - "edit_task": update a task
    - "complete_task": mark task done
-   - "create_memory": save personal facts, people, important dates, projects, preferences
-   - "query_memories": answer questions about saved personal facts, people, dates
-   - "query_reminders": show reminders for today/tomorrow/week/month
-   - "query_schedule": overview of today's or tomorrow's combined schedule
    - "daily_briefing": morning daily briefing
    - "evening_summary": evening reflection summary
    - "weekly_review": weekly review
-   - "update_preference": save user preference (e.g. reminder start time)
-   - "general_chat": natural conversational chat
+   - "update_preference": save user preference
+   - "general_chat": general friendly chat (only when no facts or reminders are mentioned)
 
 ### JSON OUTPUT FORMAT (Strictly JSON only):
 {
-  "intent": "create_reminder" | "create_memory" | "create_task" | "query_reminders" | "query_memories" | "query_schedule" | "edit_reminder" | "delete_reminder" | "complete_task" | "daily_briefing" | "evening_summary" | "weekly_review" | "update_preference" | "general_chat",
+  "intent": "create_memory" | "create_reminder" | "create_task" | "query_memories" | "query_reminders" | "query_schedule" | "edit_reminder" | "delete_reminder" | "complete_task" | "daily_briefing" | "evening_summary" | "weekly_review" | "update_preference" | "general_chat",
   "title": string | null,
   "description": string | null,
   "date": "YYYY-MM-DD" | null,
@@ -85,7 +79,7 @@ You natively understand natural language in Bangla (বাংলা), Banglish, 
   "reminder_offsets": ["at_time" | "10_min_before" | "30_min_before" | "1_hour_before" | "1_day_before" | "3_days_before" | "1_week_before"],
   "priority": "LOW" | "NORMAL" | "HIGH",
   "category": string,
-  "memory_category": "Family" | "Work" | "People" | "Finance" | "Personal" | "Important Dates" | "Projects" | "Preferences" | null,
+  "memory_category": "Family" | "Work" | "People" | "Finance" | "Health" | "Personal" | "Important Dates" | "Projects" | "Preferences" | null,
   "memory_key": string | null,
   "memory_value": string | null,
   "target_reference": string | null,
@@ -479,7 +473,7 @@ Analyze context, resolve references (like "ওটা", "আগেরটা", "�
   // 6. CREATE_MEMORY (#163, #164, #179, #180)
   if (intent === "create_memory") {
     const category = parsed.memory_category || "Personal";
-    const key = parsed.memory_key || parsed.title || "Note";
+    const key = parsed.memory_key || parsed.title || "তথ্য";
     const value = parsed.memory_value || message;
 
     const memory = await prisma.memory.create({
@@ -499,10 +493,22 @@ Analyze context, resolve references (like "ওটা", "আগেরটা", "�
       details: { category, key, value },
     });
 
+    const replyMsg = parsed.reply_bn || `ঠিক আছে, আমি মনে রাখলাম: ${key} — ${value}।`;
+
+    await prisma.conversationMessage.create({
+      data: {
+        userId,
+        channel,
+        role: "ASSISTANT",
+        content: replyMsg,
+        metadata: JSON.stringify({ intent: "create_memory", memoryId: memory.id }),
+      },
+    }).catch(() => null);
+
     return {
       success: true,
       intent: "create_memory",
-      message: parsed.reply_bn || `ঠিক আছে, আমি মনে রাখলাম: ${key} — ${value}।`,
+      message: replyMsg,
       data: memory,
       actionTaken: "MEMORY_CREATED",
     };
@@ -695,19 +701,79 @@ function fallbackContextualParser(
     };
   }
 
-  // 4. People Memory / Job / Client statement (#179)
-  if (lower.includes("কাজ করে") || lower.includes("client") || lower.includes("কোম্পানি") || lower.includes("বন্ধু") || lower.includes("ভাই")) {
-    // If statement contains info like "রাকিব ABC কোম্পানিতে কাজ করে, ও আমার client" or "আমার ভাইয়ের জন্মদিন ১২ ডিসেম্বর"
-    if (lower.includes("জন্মদিন") || lower.includes("birthday")) {
-      return {
-        intent: "create_memory",
-        memory_category: "Family",
-        memory_key: "ভাইয়ের জন্মদিন",
-        memory_value: message.replace(/আমার|মনে রেখো|মনে রাখো/gi, "").trim(),
-        reply_bn: "ঠিক আছে, আমি মনে রাখলাম: ভাইয়ের জন্মদিন ১২ ডিসেম্বর।",
-      };
-    }
+  // 4. Specific Identity / Document / Personal Fact Matchers (#163, #179)
+  if (lower.includes("পাসপোর্ট") || lower.includes("passport")) {
+    return {
+      intent: "create_memory",
+      memory_category: "Personal",
+      memory_key: "পাসপোর্ট নম্বর",
+      memory_value: message.replace(/আমার|পাসপোর্ট নম্বর|পাসপোর্ট নাম্বার|মনে রেখো|মনে রাখো|save/gi, "").trim() || message,
+      reply_bn: "ঠিক আছে, আমি আপনার পাসপোর্ট সম্পর্কিত তথ্য মেমোরিতে সেভ করে রাখলাম।",
+    };
+  }
 
+  if (lower.includes("এনআইডি") || lower.includes("nid") || lower.includes("ভোটার আইডি") || lower.includes("জাতীয় পরিচয়পত্র")) {
+    return {
+      intent: "create_memory",
+      memory_category: "Personal",
+      memory_key: "জাতীয় পরিচয়পত্র (NID)",
+      memory_value: message.replace(/আমার|এনআইডি|nid|জাতীয় পরিচয়পত্র|মনে রেখো|save/gi, "").trim() || message,
+      reply_bn: "ঠিক আছে, আমি আপনার NID নম্বরটি মেমোরিতে সংরক্ষণ করে রাখলাম।",
+    };
+  }
+
+  if (lower.includes("রক্ত") || lower.includes("blood")) {
+    return {
+      intent: "create_memory",
+      memory_category: "Health",
+      memory_key: "রক্তের গ্রুপ",
+      memory_value: message.replace(/আমার|রক্তের গ্রুপ|blood group|মনে রেখো/gi, "").trim() || message,
+      reply_bn: "ঠিক আছে, আমি আপনার রক্তের গ্রুপ মেমোরিতে সেভ করে রাখলাম।",
+    };
+  }
+
+  if (lower.includes("ঠিকানা") || lower.includes("বাসা") || lower.includes("address")) {
+    return {
+      intent: "create_memory",
+      memory_category: "Personal",
+      memory_key: "বাসা / ঠিকানা",
+      memory_value: message.replace(/আমার|বাসার ঠিকানা|ঠিকানা|address|মনে রেখো/gi, "").trim() || message,
+      reply_bn: "ঠিক আছে, আমি আপনার ঠিকানাটি মেমোরিতে সেভ করে রেখেছি।",
+    };
+  }
+
+  if (lower.includes("গাড়ি") || lower.includes("বাইক") || lower.includes("car") || lower.includes("bike") || lower.includes("লাইসেন্স")) {
+    return {
+      intent: "create_memory",
+      memory_category: "Personal",
+      memory_key: "যানবাহন / লাইসেন্স তথ্য",
+      memory_value: message,
+      reply_bn: "ঠিক আছে, আমি এটি মেমোরিতে সংরক্ষণ করে রাখলাম।",
+    };
+  }
+
+  if (lower.includes("ফোন") || lower.includes("মোবাইল") || lower.includes("নাম্বার") || lower.includes("number")) {
+    return {
+      intent: "create_memory",
+      memory_category: "People",
+      memory_key: "যোগাযোগ / ফোন নম্বর",
+      memory_value: message,
+      reply_bn: "ঠিক আছে, আমি ফোন নম্বর ও যোগাযোগের তথ্য মেমোরিতে সেভ করে রাখলাম।",
+    };
+  }
+
+  if (lower.includes("জন্মদিন") || lower.includes("birthday")) {
+    return {
+      intent: "create_memory",
+      memory_category: "Important Dates",
+      memory_key: "জন্মদিন",
+      memory_value: message.replace(/আমার|মনে রেখো|মনে রাখো/gi, "").trim() || message,
+      reply_bn: "ঠিক আছে, আমি এই জন্মদিনের তারিখটি মেমোরিতে সংরক্ষণ করে রাখলাম।",
+    };
+  }
+
+  // 5. People Memory / Job / Client statement (#179)
+  if (lower.includes("কাজ করে") || lower.includes("client") || lower.includes("কোম্পানি") || lower.includes("বন্ধু") || lower.includes("ভাই")) {
     const words = message.split(" ");
     const personName = words[0] || "পরিচিত ব্যক্তি";
     return {
@@ -719,39 +785,30 @@ function fallbackContextualParser(
     };
   }
 
-  // 5. Memory creation: "মনে রেখো" / "save" / "জন্মদিন"
-  if (lower.includes("জন্মদিন") || lower.includes("birthday")) {
+  // 6. General "আমার..." or "আমি..." Fact Detection
+  if (lower.startsWith("আমার ") || lower.startsWith("আমি ") || lower.includes("পছন্দ") || lower.includes("অপছন্দ")) {
     return {
       intent: "create_memory",
-      memory_category: "Important Dates",
-      memory_key: "জন্মদিন",
+      memory_category: "Personal",
+      memory_key: "ব্যক্তিগত তথ্য",
       memory_value: message,
-      reply_bn: "ঠিক আছে, আমি এই গুরুত্বপূর্ণ তারিখটি মনে রাখলাম।",
+      reply_bn: "ঠিক আছে, আমি এই তথ্যটি আপনার পার্সোনাল মেমোরিতে সংরক্ষণ করে রাখলাম।",
     };
   }
 
+  // 7. Explicit Memory keywords: "মনে রেখো" / "save"
   if ((lower.includes("মনে রেখো") || lower.includes("মনে রাখ") || lower.includes("save")) && !lower.includes("মনে করিয়ে দিও")) {
     return {
       intent: "create_memory",
       memory_category: "Personal",
-      memory_key: "Important Note",
-      memory_value: message.replace(/মনে রেখো|মনে রাখো|save this/gi, "").trim(),
-      reply_bn: "ঠিক আছে, আমি এটি মেমোরিতে সেভ করে রাখলাম।",
+      memory_key: "গুরুত্বপূর্ণ নোট",
+      memory_value: message.replace(/মনে রেখো|মনে রাখো|save this/gi, "").trim() || message,
+      reply_bn: "ঠিক আছে, আমি এটি আপনার মেমোরিতে সংরক্ষণ করলাম।",
     };
   }
 
-  // 6. Reference resolution for previous reminder (e.g. "ওটার কথা একদিন আগে মনে করিয়ে দিও")
-  if (lower.includes("ওটার") || lower.includes("ওইটা") || lower.includes("একদিন আগে") || lower.includes("১ দিন আগে")) {
-    return {
-      intent: "create_reminder",
-      title: activeReminders[0]?.title || "রিমাইন্ডার",
-      reminder_offsets: ["1_day_before"],
-      reply_bn: `ঠিক আছে, "${activeReminders[0]?.title || "ইভেন্ট"}" এর ১ দিন আগে আপনাকে মনে করিয়ে দেব।`,
-    };
-  }
-
-  // 7. Reminder creation
-  if (lower.includes("মনে করিয়ে দিও") || lower.includes("remind") || lower.includes("meeting") || lower.includes("call")) {
+  // 8. Reminder creation
+  if (lower.includes("মনে করিয়ে দিও") || lower.includes("remind") || lower.includes("meeting") || lower.includes("মিটিং") || lower.includes("call")) {
     return {
       intent: "create_reminder",
       title: message.replace(/মনে করিয়ে দিও|remind me|আমাকে/gi, "").trim() || "জরুরি রিমাইন্ডার",

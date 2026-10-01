@@ -105,16 +105,21 @@ export default function TelegramSyncCard() {
   const [syncingWebhook, setSyncingWebhook] = useState(false);
   const [webhookStatus, setWebhookStatus] = useState<string | null>(null);
   const [testingConnection, setTestingConnection] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; deepLink?: string } | null>(null);
+  const [showChatIdInput, setShowChatIdInput] = useState(false);
+  const [customChatId, setCustomChatId] = useState("");
 
-  const handleTestConnection = async () => {
+  const handleTestConnection = async (overrideChatId?: string) => {
     setTestingConnection(true);
     setTestResult(null);
     try {
+      const activeChatId = overrideChatId !== undefined ? overrideChatId : customChatId.trim();
       const res = await fetch("/api/telegram/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          chatId: activeChatId || undefined,
+        }),
       });
 
       const contentType = res.headers.get("content-type") || "";
@@ -123,19 +128,24 @@ export default function TelegramSyncCard() {
         json = await res.json();
       } else {
         const rawText = await res.text().catch(() => "");
-        if (res.status === 404 || rawText.includes("<!DOCTYPE") || rawText.includes("<html")) {
-          throw new Error("নতুন আপডেট কার্যকর হতে Hostinger থেকে 'Restart Application' দিন।");
-        }
         throw new Error(rawText || `সার্ভার ত্রুটি (${res.status})`);
       }
 
-      if (json.success) {
+      if (json.success && json.messageSent) {
         setTestResult({ success: true, message: json.message });
+        fetchStatus();
       } else {
-        setTestResult({ success: false, message: json.error || "টেস্ট সম্পন্ন করা যায়নি।" });
+        setTestResult({
+          success: false,
+          message: json.error || json.message || "টেস্ট সম্পন্ন করা যায়নি।",
+          deepLink: json.deepLink,
+        });
+        if (!data?.isConnected) {
+          setShowChatIdInput(true);
+        }
       }
     } catch (err: any) {
-      setTestResult({ success: false, message: "সার্ভার সংযোগে ত্রুটি: " + err.message });
+      setTestResult({ success: false, message: "ত্রুটি: " + err.message });
     } finally {
       setTestingConnection(false);
     }
@@ -365,13 +375,22 @@ export default function TelegramSyncCard() {
               <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
                 {/* Live Test Connection Button */}
                 <button
-                  onClick={handleTestConnection}
+                  onClick={() => handleTestConnection()}
                   disabled={testingConnection}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[11px] font-semibold transition-all border border-emerald-500/30 hover:scale-102"
                   title="বট কানেকশন এবং মেসেজ ডেলিভারি টেস্ট করুন"
                 >
                   <Sparkles className="w-3 h-3 text-emerald-400" />
-                  <span>{testingConnection ? "টেস্ট হচ্ছে..." : "🧪 টেস্ট মেসেজ পাঠান (Test Connection)"}</span>
+                  <span>{testingConnection ? "টেস্ট হচ্ছে..." : "🧪 টেস্ট মেসেজ পাঠান"}</span>
+                </button>
+
+                {/* Toggle Chat ID Input */}
+                <button
+                  onClick={() => setShowChatIdInput(!showChatIdInput)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-sky-200 text-[11px] font-medium transition-all"
+                  title="নির্দিষ্ট Telegram Chat ID তে টেস্ট মেসেজ পাঠাতে ক্লিক করুন"
+                >
+                  <span>🆔 Chat ID টেস্ট</span>
                 </button>
 
                 {/* 1-Click Sync Webhook */}
@@ -382,7 +401,7 @@ export default function TelegramSyncCard() {
                   title="হোস্টিং সার্ভারের সাথে টেলিগ্রাম বট ওয়েবহুক সিঙ্ক করুন"
                 >
                   <RefreshCw className={`w-3 h-3 text-sky-400 ${syncingWebhook ? "animate-spin" : ""}`} />
-                  <span>{syncingWebhook ? "সিঙ্ক হচ্ছে..." : "⚡ ওয়েবহুক সিঙ্ক"}</span>
+                  <span>{syncingWebhook ? "সিঙ্ক হচ্ছে..." : "⚡ ওয়েবহুক"}</span>
                 </button>
 
                 {/* Change Bot Token Button */}
@@ -392,33 +411,75 @@ export default function TelegramSyncCard() {
                   title="বট টোকেন পরিবর্তন বা আপডেট করুন"
                 >
                   <Key className="w-3 h-3" />
-                  <span>টোকেন পরিবর্তন</span>
+                  <span>টোকেন</span>
                 </button>
               </div>
             )}
           </div>
         </div>
 
+        {/* Custom Chat ID Direct Test Box */}
+        {showChatIdInput && (
+          <div className="mt-4 p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 space-y-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <input
+                type="text"
+                placeholder="আপনার Telegram Chat ID লিখুন (যেমন: 123456789)"
+                value={customChatId}
+                onChange={(e) => setCustomChatId(e.target.value)}
+                className="flex-1 px-3.5 py-2 rounded-xl bg-slate-900/80 border border-white/20 text-white placeholder-slate-400 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-sky-400"
+              />
+              <button
+                onClick={() => handleTestConnection(customChatId)}
+                disabled={testingConnection || !customChatId.trim()}
+                className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold shadow disabled:opacity-50 transition-all flex items-center justify-center gap-1.5"
+              >
+                <Send className="w-3.5 h-3.5" />
+                {testingConnection ? "পাঠানো হচ্ছে..." : "এই আইডিতে টেস্ট পাঠান"}
+              </button>
+            </div>
+            <p className="text-[11px] text-indigo-200/80 flex items-center gap-1">
+              💡 <span>টিপস: টেলিগ্রাম অ্যাপে <a href="https://t.me/userinfobot" target="_blank" rel="noreferrer" className="text-sky-300 underline font-semibold">@userinfobot</a> এ Start দিয়ে আপনার numeric Chat ID পেতে পারেন। অথবা বটে গিয়ে <code className="bg-white/10 px-1 py-0.5 rounded">/start</code> লিখলেই অটো কানেক্ট হবে।</span>
+            </p>
+          </div>
+        )}
+
         {/* Test Result Live Banner */}
         {testResult && (
           <div
-            className={`mt-4 p-3.5 rounded-2xl border text-xs font-semibold flex items-center justify-between transition-all animate-fadeIn ${
+            className={`mt-4 p-4 rounded-2xl border text-xs font-semibold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition-all animate-fadeIn ${
               testResult.success
-                ? "bg-emerald-950/60 border-emerald-500/40 text-emerald-200"
-                : "bg-rose-950/60 border-rose-500/40 text-rose-200"
+                ? "bg-emerald-950/80 border-emerald-500/50 text-emerald-200"
+                : "bg-rose-950/80 border-rose-500/50 text-rose-200"
             }`}
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-start gap-2.5">
               {testResult.success ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
               )}
-              <span>{testResult.message}</span>
+              <div className="space-y-1">
+                <span>{testResult.message}</span>
+                {!testResult.success && botConfig?.botUsername && (
+                  <div className="pt-1">
+                    <a
+                      href={testResult.deepLink || `https://t.me/${botConfig.botUsername}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-sky-500 hover:bg-sky-400 text-white text-[11px] font-bold shadow transition-all"
+                    >
+                      <Send className="w-3 h-3" />
+                      টেলিগ্রামে @{botConfig.botUsername} বট খুলুন
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
             </div>
             <button
               onClick={() => setTestResult(null)}
-              className="text-white/60 hover:text-white text-sm px-1.5 py-0.5"
+              className="text-white/60 hover:text-white text-sm px-1.5 py-0.5 self-end sm:self-center"
             >
               ✕
             </button>

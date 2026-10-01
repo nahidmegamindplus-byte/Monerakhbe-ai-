@@ -1,5 +1,5 @@
 {
-  "buildCommand": "prisma generate && (prisma db push --accept-data-loss || true) && (node scripts/seed.js || true) && next build",
+  "buildCommand": "node scripts/ensure_env.js && prisma generate && (prisma db push --accept-data-loss || true) && (node scripts/seed.js || true) && next build",
   "crons": [
     {
       "path": "/api/cron/reminder-worker",

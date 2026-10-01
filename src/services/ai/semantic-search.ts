@@ -1,8 +1,6 @@
 import prisma from "@/lib/prisma";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateContentWithFallback } from "./gemini-client";
 
-const apiKey = process.env.GEMINI_API_KEY || "";
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 export interface SemanticSearchResult {
   answer: string;
@@ -99,16 +97,10 @@ export async function searchMemoriesAndAskAI({
   }
 
   // 4. Synthesize direct natural language answer with Gemini / Fallback
-  if (genAI && apiKey.trim()) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        generationConfig: { temperature: 0.2 },
-      });
-
-      const contextText = relevantMemories
-        .map(
-          (m, idx) => `
+  try {
+    const contextText = relevantMemories
+      .map(
+        (m, idx) => `
 [Memory #${idx + 1}]
 Title: ${m.key}
 Category: ${m.category}
@@ -119,10 +111,10 @@ Structured Data: ${m.structuredData || "N/A"}
 Source: ${m.source}
 Date: ${m.createdAt.toISOString()}
 `
-        )
-        .join("\n---\n");
+      )
+      .join("\n---\n");
 
-      const prompt = `
+    const prompt = `
 You are MoneRakhbe AI's Memory & Document search assistant.
 The user is asking a question about their saved memories, documents, voice notes, or photos.
 
@@ -138,19 +130,24 @@ INSTRUCTIONS:
 4. If not found in the stored memory, state politely that the specific info was not found. Do NOT invent facts.
 `;
 
-      const result = await model.generateContent(prompt);
-      const answer = result.response.text();
+    const aiRes = await generateContentWithFallback({
+      prompt,
+      isJson: false,
+      temperature: 0.2,
+    });
 
+    if (aiRes && aiRes.text) {
       return {
-        answer,
+        answer: aiRes.text.trim(),
         foundMemories: relevantMemories,
         sourceAttachments,
         confidence: matched.length > 0 ? 0.95 : 0.6,
       };
-    } catch (e) {
-      console.error("[Semantic Search AI Error, using rule synthesis]", e);
     }
+  } catch (e) {
+    console.error("[Semantic Search AI Error, using rule synthesis]", e);
   }
+
 
   // Fallback direct synthesis
   if (relevantMemories.length > 0 && matched.length > 0) {

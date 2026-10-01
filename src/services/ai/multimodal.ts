@@ -1,12 +1,10 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import prisma from "@/lib/prisma";
 import { saveUploadedFile, checkFileLimit, detectFileType } from "@/lib/storage";
 import { logAudit } from "@/lib/audit";
 import { recordAiUsage, checkUserAiLimit } from "@/lib/usage";
 import { formatFriendlyDate } from "@/lib/date-utils";
+import { generateContentWithFallback } from "./gemini-client";
 
-const apiKey = process.env.GEMINI_API_KEY || "";
-const genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 export interface MultimodalInputOptions {
   userId: string;
@@ -142,58 +140,54 @@ export async function processMemoryInput(options: MultimodalInputOptions): Promi
   let aiResult: any = null;
   let tokensUsed = 150;
 
-  if (genAI && apiKey.trim()) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.1,
+  try {
+    const inlineParts: any[] = [];
+    // Add inline file data for Audio / Image / PDF if provided
+    if (fileBuffer && fileBuffer.length > 0) {
+      let validMime = mimeType;
+      if (fileType === "audio" && (!validMime || validMime === "application/octet-stream")) {
+        validMime = fileName.endsWith(".mp3") ? "audio/mp3" : "audio/ogg";
+      }
+      if (fileType === "image" && (!validMime || validMime === "application/octet-stream")) {
+        validMime = fileName.endsWith(".png") ? "image/png" : "image/jpeg";
+      }
+      if (fileType === "pdf") {
+        validMime = "application/pdf";
+      }
+
+      inlineParts.push({
+        inlineData: {
+          data: fileBuffer.toString("base64"),
+          mimeType: validMime,
         },
       });
+    }
 
-      const parts: any[] = [];
-      parts.push({ text: MULTIMODAL_MEMORY_PROMPT });
-
-      const contextPrompt = `
+    const contextPrompt = `
 Current Reference Date & Time: ${new Date().toISOString()}
 Timezone: ${userTimezone}
 Input Type: ${fileType}
 User Caption/Text: "${caption || text}"
 File Name: "${fileName}"
 `;
-      parts.push({ text: contextPrompt });
 
-      // Add inline file data for Audio / Image / PDF if provided
-      if (fileBuffer && fileBuffer.length > 0) {
-        let validMime = mimeType;
-        if (fileType === "audio" && (!validMime || validMime === "application/octet-stream")) {
-          validMime = fileName.endsWith(".mp3") ? "audio/mp3" : "audio/ogg";
-        }
-        if (fileType === "image" && (!validMime || validMime === "application/octet-stream")) {
-          validMime = fileName.endsWith(".png") ? "image/png" : "image/jpeg";
-        }
-        if (fileType === "pdf") {
-          validMime = "application/pdf";
-        }
+    const aiRes = await generateContentWithFallback({
+      prompt: contextPrompt,
+      systemInstruction: MULTIMODAL_MEMORY_PROMPT,
+      inlineParts,
+      isJson: true,
+      temperature: 0.1,
+    });
 
-        parts.push({
-          inlineData: {
-            data: fileBuffer.toString("base64"),
-            mimeType: validMime,
-          },
-        });
-      }
-
-      const response = await model.generateContent(parts);
-      const resText = response.response.text();
-      aiResult = JSON.parse(resText);
-      tokensUsed = response.response.usageMetadata?.totalTokenCount || 300;
+    if (aiRes && aiRes.parsedJson) {
+      aiResult = aiRes.parsedJson;
+      tokensUsed = aiRes.tokensUsed;
       await recordAiUsage(userId, tokensUsed);
-    } catch (err) {
-      console.error("[Multimodal AI Analysis Error, falling back]", err);
     }
+  } catch (err) {
+    console.error("[Multimodal AI Analysis Error, falling back]", err);
   }
+
 
   // Fallback heuristic if AI unavailable or parsing failed
   if (!aiResult) {

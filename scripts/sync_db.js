@@ -4,8 +4,13 @@ const path = require('path');
 const rootDir = path.resolve(__dirname, '..');
 
 try {
+  require('./ensure_env.js');
+} catch (_) {}
+
+try {
   console.log('[DB Sync] Checking database schema & migrations...');
-  const dbUrl = process.env.DATABASE_URL || '';
+  const dbUrl = process.env.DATABASE_URL || 'file:./dev.db';
+  process.env.DATABASE_URL = dbUrl;
   
   if (dbUrl && !dbUrl.includes('[YOUR-PASSWORD]')) {
     try {

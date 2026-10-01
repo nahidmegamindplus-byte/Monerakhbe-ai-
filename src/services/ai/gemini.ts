@@ -1,7 +1,7 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { AIIntentResult } from "@/types";
 import { SYSTEM_NLU_PROMPT } from "./prompt";
 import { parseMessageFallback } from "./fallback-parser";
+import { generateContentWithFallback } from "./gemini-client";
 
 export async function parseUserMessageWithGemini(
   message: string,
@@ -9,25 +9,8 @@ export async function parseUserMessageWithGemini(
   currentIsoTime?: string
 ): Promise<{ result: AIIntentResult; tokensUsed: number }> {
   const now = currentIsoTime ? new Date(currentIsoTime) : new Date();
-  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
 
-  // If no Gemini key is provided, use the robust rule-based NLU engine
-  if (!apiKey) {
-    const fallbackResult = parseMessageFallback(message, now);
-    return { result: fallbackResult, tokensUsed: 0 };
-  }
-
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-      generationConfig: {
-        responseMimeType: "application/json",
-        temperature: 0.1,
-      },
-    });
-
-    const userPrompt = `
+  const userPrompt = `
 Reference Current Date & Time: ${now.toISOString()} (${now.toLocaleDateString("en-US", { timeZone: userTimezone })})
 User Timezone: ${userTimezone}
 User Message: "${message}"
@@ -35,46 +18,43 @@ User Message: "${message}"
 Parse this message and return the exact JSON schema defined in system prompt.
 `;
 
-    const chat = model.startChat({
-      history: [
-        {
-          role: "user",
-          parts: [{ text: SYSTEM_NLU_PROMPT }],
-        },
-        {
-          role: "model",
-          parts: [{ text: "Understood. I will parse all incoming messages strictly following the rules and output valid JSON." }],
-        },
-      ],
+  try {
+    const aiResponse = await generateContentWithFallback({
+      prompt: userPrompt,
+      systemInstruction: SYSTEM_NLU_PROMPT,
+      isJson: true,
+      temperature: 0.1,
     });
 
-    const response = await chat.sendMessage(userPrompt);
-    const text = response.response.text();
-    const parsed = JSON.parse(text) as AIIntentResult;
+    if (aiResponse && aiResponse.parsedJson) {
+      const parsed = aiResponse.parsedJson as AIIntentResult;
 
-    // Safety checks against hallucinated recurrence:
-    const lower = message.toLowerCase();
-    const hasRecurrenceKeyword =
-      lower.includes("প্রতি") ||
-      lower.includes("every") ||
-      lower.includes("daily") ||
-      lower.includes("weekly") ||
-      lower.includes("monthly") ||
-      lower.includes("yearly") ||
-      lower.includes("protidin") ||
-      lower.includes("proti");
+      // Safety checks against hallucinated recurrence:
+      const lower = message.toLowerCase();
+      const hasRecurrenceKeyword =
+        lower.includes("প্রতি") ||
+        lower.includes("every") ||
+        lower.includes("daily") ||
+        lower.includes("weekly") ||
+        lower.includes("monthly") ||
+        lower.includes("yearly") ||
+        lower.includes("protidin") ||
+        lower.includes("proti");
 
-    if (!hasRecurrenceKeyword && parsed.recurrence) {
-      parsed.recurrence = null;
+      if (!hasRecurrenceKeyword && parsed.recurrence) {
+        parsed.recurrence = null;
+      }
+
+      return {
+        result: parsed,
+        tokensUsed: aiResponse.tokensUsed,
+      };
     }
-
-    return {
-      result: parsed,
-      tokensUsed: response.response.usageMetadata?.totalTokenCount || 250,
-    };
   } catch (error) {
     console.error("[Gemini AI Parser Error, using fallback]", error);
-    const fallback = parseMessageFallback(message, now);
-    return { result: fallback, tokensUsed: 0 };
   }
+
+  const fallbackResult = parseMessageFallback(message, now);
+  return { result: fallbackResult, tokensUsed: 0 };
 }
+

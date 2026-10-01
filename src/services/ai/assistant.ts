@@ -1,11 +1,11 @@
 import prisma from "@/lib/prisma";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { formatFriendlyDate, calculateNotificationDate } from "@/lib/date-utils";
 import { recordAiUsage, checkUserAiLimit } from "@/lib/usage";
 import { logAudit } from "@/lib/audit";
 import { generateDailyBriefing, generateEveningSummary, generateWeeklyReview } from "./briefing";
 import { checkDuplicateReminder } from "./duplicate-detector";
 import { addDays, endOfDay, endOfMonth, endOfWeek, startOfDay, startOfMonth, startOfWeek } from "date-fns";
+import { generateContentWithFallback } from "./gemini-client";
 
 export interface AssistantInput {
   userId: string;
@@ -185,39 +185,28 @@ Analyze context, resolve references (like "ওটা", "আগেরটা", "�
 
   let parsed: any = null;
   let tokensUsed = 100;
-  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
 
-  if (apiKey) {
-    try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.1,
-        },
-      });
+  try {
+    const aiResponse = await generateContentWithFallback({
+      prompt: promptWithContext,
+      systemInstruction: ASSISTANT_SYSTEM_PROMPT,
+      isJson: true,
+      temperature: 0.1,
+    });
 
-      const chat = model.startChat({
-        history: [
-          { role: "user", parts: [{ text: ASSISTANT_SYSTEM_PROMPT }] },
-          { role: "model", parts: [{ text: "Understood. I will parse all messages with full context awareness and zero hallucination." }] },
-        ],
-      });
-
-      const response = await chat.sendMessage(promptWithContext);
-      const text = response.response.text();
-      parsed = JSON.parse(text);
-      tokensUsed = response.response.usageMetadata?.totalTokenCount || 250;
-    } catch (err) {
-      console.error("[Assistant Gemini Error]", err);
+    if (aiResponse && aiResponse.parsedJson) {
+      parsed = aiResponse.parsedJson;
+      tokensUsed = aiResponse.tokensUsed;
     }
+  } catch (err) {
+    console.error("[Assistant Gemini Error]", err);
   }
 
   // Fallback if Gemini unavailable
   if (!parsed) {
     parsed = fallbackContextualParser(message, now, activeReminders, pendingTasks, recentMemories);
   }
+
 
   await recordAiUsage(userId, tokensUsed);
 
@@ -539,7 +528,7 @@ Analyze context, resolve references (like "ওটা", "আগেরটা", "�
 
     if (dbMemories.length > 0) {
       const first = dbMemories[0];
-      const reply = `আপনার ${first.key}: ${first.value}`;
+      const reply = parsed.reply_bn || `আপনার ${first.key}: ${first.value}`;
       return {
         success: true,
         intent: "query_memories",
@@ -548,14 +537,28 @@ Analyze context, resolve references (like "ওটা", "আগেরটা", "�
       };
     }
 
+    // Check active reminders if term matches
+    const matchedReminder = activeReminders.find((r) =>
+      searchTerms.some((term: string) => r.title.toLowerCase().includes(term))
+    );
+    if (matchedReminder) {
+      return {
+        success: true,
+        intent: "query_reminders",
+        message: `আপনার "${matchedReminder.title}" রিমাইন্ডারটি ${formatFriendlyDate(matchedReminder.dueAt)} তারিখে নির্ধারিত রয়েছে।`,
+        data: matchedReminder,
+      };
+    }
+
     // Zero Hallucination check (#191)
     return {
       success: true,
       intent: "query_memories",
-      message: "এটা আমার কাছে সেভ নেই। আপনি চাইলে এটি সেভ করার নির্দেশ দিতে পারেন।",
+      message: parsed.reply_bn || "এটা আমার কাছে সেভ নেই। আপনি চাইলে এটি সেভ করার নির্দেশ দিতে পারেন।",
       data: [],
     };
   }
+
 
   // 8. QUERY_REMINDERS / QUERY_SCHEDULE (#170, #189)
   if (intent === "query_reminders" || intent === "query_schedule") {
@@ -697,9 +700,9 @@ function fallbackContextualParser(
     return {
       intent: "query_memories",
       target_reference: cleanSearch,
-      reply_bn: "এটা আমার কাছে সেভ নেই।",
     };
   }
+
 
   // 4. Specific Identity / Document / Personal Fact Matchers (#163, #179)
   if (lower.includes("পাসপোর্ট") || lower.includes("passport")) {

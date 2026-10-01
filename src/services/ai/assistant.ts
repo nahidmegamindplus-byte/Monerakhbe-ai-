@@ -33,10 +33,12 @@ You natively understand natural language in Bangla (বাংলা), Banglish, 
 
 ### CRITICAL MEMORY & INTENT RULES:
 1. **MANDATORY MEMORY CAPTURE RULE (#163, #164, #172, #179)**:
-   - When the user states ANY personal fact, statement, identity, document, contact, preference, relation, project note, or fact (e.g., "আমার নাম নাহিদ", "আমার পাসপোর্ট নম্বর A123456", "আমার রক্তের গ্রুপ O+", "আমি ধানমন্ডি থাকি", "আমার ভাইয়ের জন্মদিন ১২ ডিসেম্বর", "রাকিব আমার ক্লায়েন্ট", "মনে রেখো আমি চিনি ছাড়া চা খাই"), you MUST classify intent as "create_memory".
-   - Extract a clean \`memory_key\` (e.g. "পাসপোর্ট নম্বর", "রক্তের গ্রুপ", "ঠিকানা", "ভাইয়ের জন্মদিন", "রাকিব") and \`memory_value\` (the exact fact).
-   - Set \`memory_category\` to one of: "Personal", "Family", "Work", "People", "Finance", "Health", "Important Dates", "Projects", "Preferences".
-   - Generate a reassuring, warm Bengali reply in \`reply_bn\` (e.g., "ঠিক আছে, আমি আপনার পাসপোর্ট নম্বরটি মেমোরিতে সংরক্ষণ করে রেখেছি।").
+   - When the user states ANY personal fact, statement, identity, document, contact, preference, relation, project note, password, or fact (e.g., "আমার নাম নাহিদ", "আমার পাসপোর্ট নম্বর A123456", "আমার রক্তের গ্রুপ O+", "আমি ধানমন্ডি থাকি", "আমার ভাইয়ের জন্মদিন ১২ ডিসেম্বর", "রাকিব আমার ক্লায়েন্ট", "মনে রেখো আমি চিনি ছাড়া চা খাই", "ওয়াইফাই পাসওয়ার্ড wifi1234", "বাইকের চাবি ড্রয়ারে আছে", "রহিমকে ৫০০ টাকা ধার দিয়েছি"), you MUST classify intent as "create_memory".
+   - When the user uses explicit save words like "সেভ করো", "সেভ কর", "সেভ করুন", "save", "save this", "নোট রাখো", "নোট নাও", "নোট করো", "মনে রাখো", "মনে রেখো", "mone rekho", you MUST classify intent as "create_memory" (unless a specific future reminder time/date is asked).
+   - Capture passwords, Wi-Fi keys, PINs, bike/car numbers, financial transactions/loans, medicine names, physical item locations as "create_memory".
+   - Extract a clean 'memory_key' (e.g. "পাসপোর্ট নম্বর", "রক্তের গ্রুপ", "ঠিকানা", "ওয়াইফাই পাসওয়ার্ড", "বাইকের চাবি", "ভাইয়ের জন্মদিন", "রাকিব") and 'memory_value' (the exact fact/content).
+   - Set 'memory_category' to one of: "Personal", "Family", "Work", "People", "Finance", "Health", "Important Dates", "Projects", "Preferences".
+   - Generate a reassuring, warm Bengali reply in 'reply_bn' (e.g., "ঠিক আছে, আমি এটি আপনার মেমোরিতে সংরক্ষণ করে রেখেছি।").
 
 2. **SEPARATION OF MEMORY VS REMINDER**:
    - "আমার ভাইয়ের জন্মদিন ১২ ডিসেম্বর।" -> intent: "create_memory"
@@ -316,6 +318,30 @@ Analyze context, resolve references (like "ওটা", "আগেরটা", "�
     const friendlyTime = formatFriendlyDate(targetDueAt);
     const replyMsg = parsed.reply_bn || `ঠিক আছে, আমি ${friendlyTime}-এর জন্য "${title}" রিমাইন্ডার সেট করে দিলাম।`;
 
+    // Dual-save as linked Memory so it appears in Memory Vault & Search (#163, #179)
+    await prisma.memory.create({
+      data: {
+        userId,
+        category: parsed.category || "Important Dates",
+        key: title,
+        value: `${friendlyTime}-এ: ${parsed.description || title}`,
+        source: channel === "TELEGRAM" ? "telegram" : "chat_web",
+        reminderId: reminder.id,
+        structuredData: JSON.stringify(parsed),
+        summary: `রিমাইন্ডার নির্ধারিত: ${friendlyTime}`,
+      },
+    }).catch((err) => console.error("[Reminder Dual-Memory Error]", err));
+
+    await prisma.conversationMessage.create({
+      data: {
+        userId,
+        channel,
+        role: "ASSISTANT",
+        content: replyMsg,
+        metadata: JSON.stringify({ intent: "create_reminder", reminderId: reminder.id }),
+      },
+    }).catch(() => null);
+
     return {
       success: true,
       intent: "create_reminder",
@@ -417,10 +443,33 @@ Analyze context, resolve references (like "ওটা", "আগেরটা", "�
       },
     });
 
+    // Dual save to Memory vault
+    await prisma.memory.create({
+      data: {
+        userId,
+        category: "Projects",
+        key: `টাস্ক: ${task.title}`,
+        value: `অগ্রাধিকার: ${task.priority}, অবস্থা: পেন্ডিং`,
+        source: channel === "TELEGRAM" ? "telegram" : "chat_web",
+        structuredData: JSON.stringify(parsed),
+      },
+    }).catch(() => null);
+
+    const taskReply = parsed.reply_bn || `টাস্ক লিস্টে যোগ করা হয়েছে: "${task.title}"।`;
+    await prisma.conversationMessage.create({
+      data: {
+        userId,
+        channel,
+        role: "ASSISTANT",
+        content: taskReply,
+        metadata: JSON.stringify({ intent: "create_task", taskId: task.id }),
+      },
+    }).catch(() => null);
+
     return {
       success: true,
       intent: "create_task",
-      message: parsed.reply_bn || `টাস্ক লিস্টে যোগ করা হয়েছে: "${task.title}"।`,
+      message: taskReply,
       data: task,
       actionTaken: "TASK_CREATED",
     };
@@ -443,10 +492,20 @@ Analyze context, resolve references (like "ওটা", "আগেরটা", "�
         where: { id: targetTask.id },
         data: { status: "COMPLETED", completedAt: new Date() },
       });
+      const doneReply = parsed.reply_bn || `দারুণ! "${updated.title}" কাজটি সম্পন্ন হিসেবে মার্ক করা হয়েছে।`;
+      await prisma.conversationMessage.create({
+        data: {
+          userId,
+          channel,
+          role: "ASSISTANT",
+          content: doneReply,
+          metadata: JSON.stringify({ intent: "complete_task", taskId: updated.id }),
+        },
+      }).catch(() => null);
       return {
         success: true,
         intent: "complete_task",
-        message: parsed.reply_bn || `দারুণ! "${updated.title}" কাজটি সম্পন্ন হিসেবে মার্ক করা হয়েছে।`,
+        message: doneReply,
         data: updated,
         actionTaken: "TASK_COMPLETED",
       };
@@ -471,8 +530,21 @@ Analyze context, resolve references (like "ওটা", "আগেরটা", "�
         category,
         key,
         value,
+        source: channel === "TELEGRAM" ? "telegram" : "chat_web",
+        structuredData: JSON.stringify(parsed),
+        summary: parsed.reply_bn || `${key}: ${value}`,
       },
     });
+
+    await prisma.memoryTimeline.create({
+      data: {
+        memoryId: memory.id,
+        userId,
+        action: "CREATED",
+        source: channel === "TELEGRAM" ? "telegram" : "chat_web",
+        description: `চ্যাট থেকে (${channel === "TELEGRAM" ? "টেলিগ্রাম" : "ওয়েব চ্যাট"}) মেমোরি সংরক্ষণ করা হয়েছে।`,
+      },
+    }).catch(() => null);
 
     await logAudit({
       userId,
@@ -490,7 +562,7 @@ Analyze context, resolve references (like "ওটা", "আগেরটা", "�
         channel,
         role: "ASSISTANT",
         content: replyMsg,
-        metadata: JSON.stringify({ intent: "create_memory", memoryId: memory.id }),
+        metadata: JSON.stringify({ intent: "create_memory", memoryId: memory.id, memoryKey: key, memoryCategory: category }),
       },
     }).catch(() => null);
 
@@ -655,10 +727,21 @@ Analyze context, resolve references (like "ওটা", "আগেরটা", "�
   }
 
   // Default: General Chat
+  const chatReply = parsed.reply_bn || "আমি শুনতে পাচ্ছি। যেকোনো রিমাইন্ডার, টাস্ক বা মেমোরি সেভ করতে আমাকে বলুন!";
+  await prisma.conversationMessage.create({
+    data: {
+      userId,
+      channel,
+      role: "ASSISTANT",
+      content: chatReply,
+      metadata: JSON.stringify({ intent: "general_chat" }),
+    },
+  }).catch(() => null);
+
   return {
     success: true,
     intent: "general_chat",
-    message: parsed.reply_bn || "আমি শুনতে পাচ্ছি। যেকোনো রিমাইন্ডার, টাস্ক বা মেমোরি সেভ করতে আমাকে বলুন!",
+    message: chatReply,
   };
 }
 
@@ -672,7 +755,7 @@ function fallbackContextualParser(
   pendingTasks: any[],
   recentMemories: any[]
 ): any {
-  const lower = message.toLowerCase();
+  const lower = message.toLowerCase().trim();
 
   // 1. Check Briefing / Summary requests
   if (lower.includes("briefing") || lower.includes("সকালের") || lower.includes("morning")) {
@@ -708,27 +791,37 @@ function fallbackContextualParser(
   }
 
   // 3. Question answering from saved memory (#191)
-  const isQuestion =
-    lower.includes("?") ||
-    lower.includes("কি?") ||
-    lower.includes("কী?") ||
-    lower.includes(" কি ") ||
-    lower.endsWith(" কি") ||
-    lower.includes(" কী ") ||
-    lower.endsWith(" কী") ||
-    lower.includes("কবে") ||
-    lower.includes("কত") ||
-    lower.includes("কোথায়") ||
-    lower.includes("বলো") ||
-    lower.includes("জানাও") ||
-    lower.includes("মনে আছে") ||
-    lower.includes("when is") ||
-    lower.includes("who is") ||
-    lower.includes("what is");
+  const hasSaveIntent =
+    lower.includes("মনে রেখো") ||
+    lower.includes("মনে রাখ") ||
+    lower.includes("mone rekho") ||
+    lower.includes("mone rakh") ||
+    lower.includes("save") ||
+    lower.includes("সেভ") ||
+    lower.includes("নোট");
 
-  if (isQuestion && !lower.includes("মনে রেখো") && !lower.includes("মনে রাখ") && !lower.includes("save")) {
+  const isQuestion =
+    !hasSaveIntent &&
+    (lower.includes("?") ||
+      lower.includes("কি?") ||
+      lower.includes("কী?") ||
+      lower.includes(" কি ") ||
+      lower.endsWith(" কি") ||
+      lower.includes(" কী ") ||
+      lower.endsWith(" কী") ||
+      lower.includes("কবে") ||
+      lower.includes("কত") ||
+      lower.includes("কোথায়") ||
+      lower.includes("বলো") ||
+      lower.includes("জানাও") ||
+      lower.includes("মনে আছে") ||
+      lower.includes("when is") ||
+      lower.includes("who is") ||
+      lower.includes("what is"));
+
+  if (isQuestion) {
     const cleanSearch = message
-      .replace(/আমার|আমারে|কি\?|কী\?|কি|কী|কবে|কখন|কোথায়|কে\?|কত\?|কত|\?|বলো|বলুন|জানাও|who is|what is|when is|where is/gi, "")
+      .replace(/আমার|আমারে|amar|ki|কি\?|কী\?|কি|কী|কবে|কখন|কোথায়|কে\?|কত\?|কত|\?|বলো|বলুন|জানাও|who is|what is|when is|where is/gi, "")
       .trim();
     return {
       intent: "query_memories",
@@ -736,14 +829,58 @@ function fallbackContextualParser(
     };
   }
 
+  // 4. Future Time / Reminder trigger
+  const hasFutureTime =
+    lower.includes("মনে করিয়ে দিও") ||
+    lower.includes("remind") ||
+    lower.includes("মিটিং") ||
+    lower.includes("meeting") ||
+    lower.includes("কল করতে হবে") ||
+    lower.includes("ফোন করতে হবে") ||
+    lower.includes("call") ||
+    lower.includes("appointment") ||
+    lower.includes("যেতে হবে") ||
+    (lower.includes("কাল") && (lower.includes("টায়") || lower.includes("সকাল") || lower.includes("বিকাল") || lower.includes("রাত")));
 
-  // 4. Specific Identity / Document / Personal Fact Matchers (#163, #179)
+  if (hasFutureTime) {
+    return {
+      intent: "create_reminder",
+      title: message.replace(/মনে করিয়ে দিও|remind me|আমাকে|সেভ করো|save/gi, "").trim() || "জরুরি রিমাইন্ডার",
+      category: "Personal",
+      date: addDays(now, 1).toISOString().slice(0, 10),
+      time: "09:00",
+      reply_bn: "ঠিক আছে, আমি রিমাইন্ডার সেট করে দিলাম এবং মেমোরিতেও সংরক্ষণ করে রাখলাম।",
+    };
+  }
+
+  // 5. Password / Wi-Fi / Security PINs / Codes
+  if (
+    lower.includes("পাসওয়ার্ড") ||
+    lower.includes("পাসওয়ার্ড") ||
+    lower.includes("password") ||
+    lower.includes("wifi") ||
+    lower.includes("ওয়াইফাই") ||
+    lower.includes("ওয়াইফাই") ||
+    lower.includes("পিন কোড") ||
+    lower.includes("লক কোড")
+  ) {
+    const isWifi = lower.includes("wifi") || lower.includes("ওয়াইফাই") || lower.includes("ওয়াইফাই");
+    return {
+      intent: "create_memory",
+      memory_category: "Personal",
+      memory_key: isWifi ? "ওয়াইফাই পাসওয়ার্ড" : "পাসওয়ার্ড / সিকিউরিটি কোড",
+      memory_value: message.replace(/আমার|পাসওয়ার্ড|পাসওয়ার্ড|password|wifi|ওয়াইফাই|ওয়াইফাই|সেভ করো|save|মনে রেখো|নোট/gi, "").trim() || message,
+      reply_bn: "ঠিক আছে, আমি পাসওয়ার্ড / অ্যাক্সেস কোডটি মেমোরিতে নিরাপদে সেভ করে রাখলাম।",
+    };
+  }
+
+  // 6. Passport / Documents / NID
   if (lower.includes("পাসপোর্ট") || lower.includes("passport")) {
     return {
       intent: "create_memory",
       memory_category: "Personal",
       memory_key: "পাসপোর্ট নম্বর",
-      memory_value: message.replace(/আমার|পাসপোর্ট নম্বর|পাসপোর্ট নাম্বার|মনে রেখো|মনে রাখো|save/gi, "").trim() || message,
+      memory_value: message.replace(/আমার|পাসপোর্ট নম্বর|পাসপোর্ট নাম্বার|passport|মনে রেখো|মনে রাখো|save/gi, "").trim() || message,
       reply_bn: "ঠিক আছে, আমি আপনার পাসপোর্ট সম্পর্কিত তথ্য মেমোরিতে সেভ করে রাখলাম।",
     };
   }
@@ -758,27 +895,30 @@ function fallbackContextualParser(
     };
   }
 
+  // 7. Blood Group
   if (lower.includes("রক্ত") || lower.includes("blood")) {
     return {
       intent: "create_memory",
       memory_category: "Health",
       memory_key: "রক্তের গ্রুপ",
-      memory_value: message.replace(/আমার|রক্তের গ্রুপ|blood group|মনে রেখো/gi, "").trim() || message,
+      memory_value: message.replace(/আমার|রক্তের গ্রুপ|blood group|মনে রেখো|save/gi, "").trim() || message,
       reply_bn: "ঠিক আছে, আমি আপনার রক্তের গ্রুপ মেমোরিতে সেভ করে রাখলাম।",
     };
   }
 
-  if (lower.includes("ঠিকানা") || lower.includes("বাসা") || lower.includes("address")) {
+  // 8. Address / House
+  if (lower.includes("ঠিকানা") || lower.includes("বাসা") || lower.includes("বাড়ি") || lower.includes("address") || lower.includes("basha") || lower.includes("bari")) {
     return {
       intent: "create_memory",
       memory_category: "Personal",
       memory_key: "বাসা / ঠিকানা",
-      memory_value: message.replace(/আমার|বাসার ঠিকানা|ঠিকানা|address|মনে রেখো/gi, "").trim() || message,
+      memory_value: message.replace(/আমার|বাসার ঠিকানা|ঠিকানা|address|মনে রেখো|save/gi, "").trim() || message,
       reply_bn: "ঠিক আছে, আমি আপনার ঠিকানাটি মেমোরিতে সেভ করে রেখেছি।",
     };
   }
 
-  if (lower.includes("গাড়ি") || lower.includes("বাইক") || lower.includes("car") || lower.includes("bike") || lower.includes("লাইসেন্স")) {
+  // 9. Vehicles / Bike / Car / License
+  if (lower.includes("গাড়ি") || lower.includes("বাইক") || lower.includes("car") || lower.includes("bike") || lower.includes("লাইসেন্স") || lower.includes("license")) {
     return {
       intent: "create_memory",
       memory_category: "Personal",
@@ -788,7 +928,15 @@ function fallbackContextualParser(
     };
   }
 
-  if (lower.includes("ফোন") || lower.includes("মোবাইল") || lower.includes("নাম্বার") || lower.includes("number")) {
+  // 10. Phone / Mobile Contact
+  if (
+    lower.includes("ফোন") ||
+    lower.includes("মোবাইল") ||
+    lower.includes("নাম্বার") ||
+    lower.includes("number") ||
+    lower.includes("contact") ||
+    /\b01[3-9]\d{8}\b/.test(message)
+  ) {
     return {
       intent: "create_memory",
       memory_category: "People",
@@ -798,59 +946,144 @@ function fallbackContextualParser(
     };
   }
 
-  if (lower.includes("জন্মদিন") || lower.includes("birthday")) {
+  // 11. Birthday / Important Dates
+  if (lower.includes("জন্মদিন") || lower.includes("birthday") || lower.includes("জন্মতারিখ") || lower.includes("jonmodin")) {
     return {
       intent: "create_memory",
       memory_category: "Important Dates",
       memory_key: "জন্মদিন",
-      memory_value: message.replace(/আমার|মনে রেখো|মনে রাখো/gi, "").trim() || message,
+      memory_value: message.replace(/আমার|মনে রেখো|মনে রাখো|save/gi, "").trim() || message,
       reply_bn: "ঠিক আছে, আমি এই জন্মদিনের তারিখটি মেমোরিতে সংরক্ষণ করে রাখলাম।",
     };
   }
 
-  // 5. People Memory / Job / Client statement (#179)
-  if (lower.includes("কাজ করে") || lower.includes("client") || lower.includes("কোম্পানি") || lower.includes("বন্ধু") || lower.includes("ভাই")) {
-    const words = message.split(" ");
+  // 12. Finance / Loans / Borrow / Lend / Money
+  if (
+    lower.includes("টাকা") ||
+    lower.includes("ধার") ||
+    lower.includes("পাবো") ||
+    lower.includes("পাবে") ||
+    lower.includes("দিলাম") ||
+    lower.includes("নিলাম") ||
+    lower.includes("টাকা দিয়েছি") ||
+    lower.includes("হিসাব") ||
+    lower.includes("বকেয়া")
+  ) {
+    return {
+      intent: "create_memory",
+      memory_category: "Finance",
+      memory_key: "আর্থিক লেনদেন / হিসাব",
+      memory_value: message,
+      reply_bn: "ঠিক আছে, আমি এই আর্থিক হিসাবটি মেমোরিতে সেভ করে রাখলাম।",
+    };
+  }
+
+  // 13. Health / Medicine / Doctors / Prescription
+  if (
+    lower.includes("ওষুধ") ||
+    lower.includes("ঔষধ") ||
+    lower.includes("প্রেসার") ||
+    lower.includes("প্রেসক্রিপশন") ||
+    lower.includes("ডাক্তার") ||
+    lower.includes("ট্যাবলেট") ||
+    lower.includes("medicine")
+  ) {
+    return {
+      intent: "create_memory",
+      memory_category: "Health",
+      memory_key: "স্বাস্থ্য ও ওষুধ",
+      memory_value: message,
+      reply_bn: "ঠিক আছে, আমি ওষুধের ও স্বাস্থ্যের তথ্য মেমোরিতে সংরক্ষণ করে রাখলাম।",
+    };
+  }
+
+  // 14. Item locations (Keys, glasses, documents in drawer/cupboard)
+  if (
+    lower.includes("চাবি") ||
+    lower.includes("চশমা") ||
+    lower.includes("ড্রয়ার") ||
+    lower.includes("ড্রয়ার") ||
+    lower.includes("আলমারি") ||
+    lower.includes("টেবিলে") ||
+    lower.includes("ব্যাগ") ||
+    lower.includes("drawer")
+  ) {
+    return {
+      intent: "create_memory",
+      memory_category: "Personal",
+      memory_key: "জিনিসের অবস্থান / নোট",
+      memory_value: message,
+      reply_bn: "ঠিক আছে, আমি এটি মেমোরিতে সংরক্ষণ করে রেখেছি।",
+    };
+  }
+
+  // 15. People / Family / Relations / Client
+  if (
+    lower.includes("কাজ করে") ||
+    lower.includes("client") ||
+    lower.includes("কোম্পানি") ||
+    lower.includes("বন্ধু") ||
+    lower.includes("ভাই") ||
+    lower.includes("বোন") ||
+    lower.includes("মা") ||
+    lower.includes("বাবা") ||
+    lower.includes("কাজিন")
+  ) {
+    const words = message.split(/\s+/);
     const personName = words[0] || "পরিচিত ব্যক্তি";
     return {
       intent: "create_memory",
-      memory_category: "People",
+      memory_category:
+        lower.includes("ভাই") || lower.includes("বোন") || lower.includes("মা") || lower.includes("বাবা") || lower.includes("কাজিন")
+          ? "Family"
+          : "People",
       memory_key: personName,
       memory_value: message,
       reply_bn: `ঠিক আছে, আমি ${personName} সম্পর্কিত তথ্য মেমোরিতে সংরক্ষণ করলাম।`,
     };
   }
 
-  // 6. General "আমার..." or "আমি..." Fact Detection
-  if (lower.startsWith("আমার ") || lower.startsWith("আমি ") || lower.includes("পছন্দ") || lower.includes("অপছন্দ")) {
+  // 16. Explicit Save & Note commands ("সেভ করো", "নোট রাখো", "save this", "mone rekho")
+  if (
+    lower.includes("সেভ") ||
+    lower.includes("save") ||
+    lower.includes("নোট") ||
+    lower.includes("note") ||
+    lower.includes("মনে রাখ") ||
+    lower.includes("মনে রেখ") ||
+    lower.includes("mone rekho") ||
+    lower.includes("mone rakh")
+  ) {
+    return {
+      intent: "create_memory",
+      memory_category: "Personal",
+      memory_key: "সংরক্ষিত নোট",
+      memory_value:
+        message
+          .replace(
+            /সেভ করো|সেভ কর|সেভ করুন|save this|save koro|save|নোট রাখো|নোট করো|নোট নাও|note koro|note this|note|মনে রেখো|মনে রাখো|mone rekho/gi,
+            ""
+          )
+          .trim() || message,
+      reply_bn: "ঠিক আছে, আমি এটি আপনার মেমোরিতে সংরক্ষণ করে রাখলাম।",
+    };
+  }
+
+  // 17. General "আমার..." or "আমি..." or Banglish "amar " or "ami "
+  if (
+    lower.startsWith("আমার ") ||
+    lower.startsWith("আমি ") ||
+    lower.startsWith("amar ") ||
+    lower.startsWith("ami ") ||
+    lower.includes("পছন্দ") ||
+    lower.includes("অপছন্দ")
+  ) {
     return {
       intent: "create_memory",
       memory_category: "Personal",
       memory_key: "ব্যক্তিগত তথ্য",
       memory_value: message,
       reply_bn: "ঠিক আছে, আমি এই তথ্যটি আপনার পার্সোনাল মেমোরিতে সংরক্ষণ করে রাখলাম।",
-    };
-  }
-
-  // 7. Explicit Memory keywords: "মনে রেখো" / "save"
-  if ((lower.includes("মনে রেখো") || lower.includes("মনে রাখ") || lower.includes("save")) && !lower.includes("মনে করিয়ে দিও")) {
-    return {
-      intent: "create_memory",
-      memory_category: "Personal",
-      memory_key: "গুরুত্বপূর্ণ নোট",
-      memory_value: message.replace(/মনে রেখো|মনে রাখো|save this/gi, "").trim() || message,
-      reply_bn: "ঠিক আছে, আমি এটি আপনার মেমোরিতে সংরক্ষণ করলাম।",
-    };
-  }
-
-  // 8. Reminder creation
-  if (lower.includes("মনে করিয়ে দিও") || lower.includes("remind") || lower.includes("meeting") || lower.includes("মিটিং") || lower.includes("call")) {
-    return {
-      intent: "create_reminder",
-      title: message.replace(/মনে করিয়ে দিও|remind me|আমাকে/gi, "").trim() || "জরুরি রিমাইন্ডার",
-      date: addDays(now, 1).toISOString().slice(0, 10),
-      time: "09:00",
-      reply_bn: "ঠিক আছে, আমি রিমাইন্ডার সেট করে দিলাম।",
     };
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import {
   Send,
   Sparkles,
@@ -14,6 +15,9 @@ import {
   FileText,
   X,
   ExternalLink,
+  CheckCircle2,
+  ArrowRight,
+  Bell,
 } from "lucide-react";
 
 interface ChatMessage {
@@ -21,6 +25,8 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   intent?: string;
+  data?: any;
+  actionTaken?: string;
   attachmentName?: string;
   attachmentType?: string;
   createdAt: Date;
@@ -39,6 +45,37 @@ export default function WebChatWidget({ defaultPrompt }: { defaultPrompt?: strin
   const [input, setInput] = useState(defaultPrompt || "");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Fetch recent conversation history on mount
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch("/api/chat");
+        const json = await res.json();
+        if (json.success && Array.isArray(json.messages) && json.messages.length > 0) {
+          const formatted: ChatMessage[] = json.messages.map((m: any) => {
+            let meta: any = {};
+            try {
+              meta = JSON.parse(m.metadata || "{}");
+            } catch {}
+            return {
+              id: m.id,
+              role: m.role.toLowerCase() as "user" | "assistant",
+              content: m.content,
+              intent: meta.intent,
+              data: meta.data || (meta.memoryKey ? { key: meta.memoryKey, category: meta.memoryCategory } : undefined),
+              actionTaken: meta.actionTaken,
+              createdAt: new Date(m.createdAt),
+            };
+          });
+          setMessages(formatted);
+        }
+      } catch (err) {
+        console.error("[WebChatWidget] Failed to load history", err);
+      }
+    };
+    fetchHistory();
+  }, []);
 
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -167,40 +204,10 @@ export default function WebChatWidget({ defaultPrompt }: { defaultPrompt?: strin
     setLoading(true);
 
     try {
-      // Check if question/search or normal chat
-      const isQuestion =
-        text.includes("?") ||
-        text.includes("কত ছিল") ||
-        text.includes("কবে") ||
-        text.includes("কোথায়") ||
-        text.includes("document");
-
-      let url = "/api/chat";
-      let body: any = { message: text };
-
-      if (isQuestion && !text.includes("briefing") && !text.includes("summary") && !text.includes("review")) {
-        const searchRes = await fetch(`/api/memories/search?q=${encodeURIComponent(text)}`);
-        const searchData = await searchRes.json();
-        if (searchData.success && searchData.answer && searchData.memories?.length > 0) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: `bot-${Date.now()}`,
-              role: "assistant",
-              content: searchData.answer,
-              intent: "query_memories",
-              createdAt: new Date(),
-            },
-          ]);
-          setLoading(false);
-          return;
-        }
-      }
-
-      const res = await fetch(url, {
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ message: text }),
       });
 
       const data = await res.json();
@@ -210,6 +217,8 @@ export default function WebChatWidget({ defaultPrompt }: { defaultPrompt?: strin
         role: "assistant",
         content: data.message || "কাজটি সম্পন্ন হয়েছে!",
         intent: data.intent,
+        data: data.data,
+        actionTaken: data.actionTaken,
         createdAt: new Date(),
       };
 
@@ -294,13 +303,13 @@ export default function WebChatWidget({ defaultPrompt }: { defaultPrompt?: strin
   };
 
   const samplePrompts = [
-    "আমার কাল কী কী কাজ আছে?",
-    "আগামী শুক্রবার রাকিবের সাথে meeting আছে, মনে রেখো",
-    "ওটার কথা একদিন আগে মনে করিয়ে দিও",
-    "আমার ভাইয়ের জন্মদিন ১২ ডিসেম্বর",
-    "আমার ভাইয়ের জন্মদিন কবে?",
-    "রাকিব ABC কোম্পানিতে কাজ করে, ও আমার client",
-    "আজকের সব reminder দেখাও",
+    "আমার রক্তের গ্রুপ O+ মনে রেখো",
+    "আমার ওয়াইফাই পাসওয়ার্ড wifi1234 সেভ করো",
+    "আমার বাসার ঠিকানা ধানমন্ডি ২৭",
+    "কাল সকাল ১১টায় ডেন্টিস্টের কাছে যাওয়া",
+    "আমার কী কী তথ্য সেভ আছে বলো",
+    "রাকিব আমার ক্লায়েন্ট, ABC কোম্পানিতে কাজ করে",
+    "আমার রক্তের গ্রুপ কি?",
   ];
 
   return (
@@ -370,6 +379,93 @@ export default function WebChatWidget({ defaultPrompt }: { defaultPrompt?: strin
                 </div>
               )}
               {m.content}
+
+              {/* Rich Confirmation Card for Memories Saved */}
+              {m.role === "assistant" && m.intent === "create_memory" && (
+                <div className="mt-2.5 p-3 rounded-2xl bg-emerald-50/90 border border-emerald-200/80 text-emerald-950 flex flex-col gap-2 shadow-2xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>মেমোরিতে সংরক্ষিত হয়েছে</span>
+                    </div>
+                    {m.data?.category && (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/90 border border-emerald-200/60 px-2 py-0.5 rounded-full">
+                        {m.data.category}
+                      </span>
+                    )}
+                  </div>
+                  {m.data?.key && (
+                    <div className="text-[11px] text-slate-800 bg-white/90 p-2 rounded-xl border border-emerald-100 flex items-center justify-between gap-2">
+                      <span className="truncate">📌 <strong className="text-slate-900">{m.data.key}</strong>: {m.data.value}</span>
+                    </div>
+                  )}
+                  <Link
+                    href="/dashboard/memory"
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 self-start transition-colors"
+                  >
+                    মেমোরি ভল্টে দেখুন <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              )}
+
+              {/* Rich Confirmation Card for Reminders */}
+              {m.role === "assistant" && m.intent === "create_reminder" && (
+                <div className="mt-2.5 p-3 rounded-2xl bg-indigo-50/90 border border-indigo-200/80 text-indigo-950 flex flex-col gap-2 shadow-2xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-800">
+                      <Bell className="w-4 h-4 text-indigo-600 shrink-0" />
+                      <span>রিমাইন্ডার ও মেমোরি সেট হয়েছে</span>
+                    </div>
+                    {m.data?.priority && (
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full">
+                        {m.data.priority}
+                      </span>
+                    )}
+                  </div>
+                  {m.data?.title && (
+                    <div className="text-[11px] text-slate-800 bg-white/90 p-2 rounded-xl border border-indigo-100">
+                      📌 <strong>{m.data.title}</strong>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3">
+                    <Link
+                      href="/dashboard/reminders"
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 transition-colors"
+                    >
+                      রিমাইন্ডার লিস্ট <ArrowRight className="w-3 h-3" />
+                    </Link>
+                    <Link
+                      href="/dashboard/memory"
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 transition-colors"
+                    >
+                      মেমোরি ভল্ট <ArrowRight className="w-3 h-3" />
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              {/* Rich Confirmation Card for Tasks */}
+              {m.role === "assistant" && m.intent === "create_task" && (
+                <div className="mt-2.5 p-3 rounded-2xl bg-amber-50/90 border border-amber-200/80 text-amber-950 flex flex-col gap-2 shadow-2xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800">
+                      <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>টাস্ক লিস্টে যুক্ত হয়েছে</span>
+                    </div>
+                  </div>
+                  {m.data?.title && (
+                    <div className="text-[11px] text-slate-800 bg-white/90 p-2 rounded-xl border border-amber-100">
+                      📌 <strong>{m.data.title}</strong>
+                    </div>
+                  )}
+                  <Link
+                    href="/dashboard/tasks"
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 hover:text-amber-900 self-start transition-colors"
+                  >
+                    টাস্ক ম্যানেজারে দেখুন <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         ))}

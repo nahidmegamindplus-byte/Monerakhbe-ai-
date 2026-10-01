@@ -80,9 +80,13 @@ model Reminder {
   description  String?
   dueAt        DateTime
   timezone     String    @default("Asia/Dhaka")
-  status       String    @default("PENDING") // PENDING, COMPLETED, CANCELLED, SNOOZED, OVERDUE
+  status       String    @default("PENDING") // PENDING, COMPLETED, CANCELLED, SNOOZED, OVERDUE, SEEN
   priority     String    @default("NORMAL") // LOW, NORMAL, HIGH
   categoryName String    @default("General")
+  isSeen       Boolean   @default(false)
+  seenAt       DateTime?
+  lastAlertSentAt DateTime?
+  repeatCount  Int       @default(0)
   recurrenceId String?
   recurrence   Recurrence? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
   completedAt  DateTime?

@@ -1,13 +1,16 @@
 import { handleTelegramUpdate } from "./handlers";
 import { getTelegramBotToken } from "./bot";
+import { processDueNotifications } from "@/services/scheduler/worker";
 
 let isPollerRunning = false;
 let lastUpdateOffset = 0;
 let consecutiveErrors = 0;
+let lastWorkerRunAt = 0;
 
 /**
  * Universal Auto-Poller for Telegram Bot
  * Fetches updates directly from Telegram API when Webhook is not active or when running locally.
+ * Also runs background reminder processing every 30 seconds.
  */
 export function startTelegramAutoPoller() {
   if (isPollerRunning) return;
@@ -17,6 +20,17 @@ export function startTelegramAutoPoller() {
 
   const runLoop = async () => {
     try {
+      // 1. Process Due Reminders and 5-minute repeats every 30 seconds
+      const nowMs = Date.now();
+      if (nowMs - lastWorkerRunAt > 30000) {
+        lastWorkerRunAt = nowMs;
+        try {
+          await processDueNotifications();
+        } catch (workerErr) {
+          console.error("❌ [Auto-Poller Reminder Worker Error]", workerErr);
+        }
+      }
+
       const token = await getTelegramBotToken();
       if (!token) {
         setTimeout(runLoop, 3000);

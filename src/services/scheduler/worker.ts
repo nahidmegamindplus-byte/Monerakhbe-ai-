@@ -62,6 +62,15 @@ export async function processDueNotifications() {
             },
           });
 
+          // Update reminder lastAlertSentAt
+          await prisma.reminder.update({
+            where: { id: notif.reminder.id },
+            data: {
+              lastAlertSentAt: new Date(),
+              isSeen: false,
+            },
+          }).catch(() => {});
+
           await logAudit({
             userId: notif.userId,
             action: "NOTIFICATION_SENT",
@@ -120,7 +129,58 @@ export async function processDueNotifications() {
     }
   }
 
-  // 3. Process Smart Overdue Follow-ups (2 hours past due, pending status, not yet notified of overdue)
+  // 3. Process 5-Minute Repeating Notifications for Reminders that have NOT been Seen / Read (#Requirement 5)
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+  const unseenReminders = await prisma.reminder.findMany({
+    where: {
+      isSeen: false,
+      deletedAt: null,
+      status: { in: ["PENDING", "SNOOZED", "OVERDUE"] },
+      dueAt: { lte: now },
+      OR: [
+        { lastAlertSentAt: { lte: fiveMinutesAgo } },
+        { lastAlertSentAt: null },
+      ],
+    },
+    include: {
+      user: {
+        include: { telegramConnection: true },
+      },
+    },
+    take: 15,
+  });
+
+  for (const unseen of unseenReminders) {
+    const tgConn = unseen.user.telegramConnection;
+    if (tgConn && tgConn.isConnected && tgConn.chatId) {
+      const isRepeat = Boolean(unseen.lastAlertSentAt);
+      const nextRepeatCount = (unseen.repeatCount || 0) + (isRepeat ? 1 : 0);
+
+      try {
+        const sendRes = await sendReminderTelegramAlert({
+          chatId: tgConn.chatId,
+          reminder: unseen,
+          isRepeat,
+          repeatCount: nextRepeatCount,
+        });
+
+        if (sendRes && sendRes.ok) {
+          await prisma.reminder.update({
+            where: { id: unseen.id },
+            data: {
+              lastAlertSentAt: new Date(),
+              repeatCount: nextRepeatCount,
+            },
+          });
+          results.sent++;
+        }
+      } catch (repErr) {
+        console.error(`[5-Min Repeat Alert Error for ${unseen.id}]`, repErr);
+      }
+    }
+  }
+
+  // 4. Process Smart Overdue Follow-ups (2 hours past due, pending status, not yet notified of overdue)
   const overdueReminders = await prisma.reminder.findMany({
     where: {
       status: "PENDING",

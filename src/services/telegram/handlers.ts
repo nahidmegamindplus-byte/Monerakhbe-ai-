@@ -8,6 +8,144 @@ import { searchMemoriesAndAskAI } from "@/services/ai/semantic-search";
 import { addHours, addDays } from "date-fns";
 import { logAudit } from "@/lib/audit";
 import { formatFriendlyDate } from "@/lib/date-utils";
+export async function handleShowAllReminders(userId: string, chatId: string | number) {
+  const reminders = await prisma.reminder.findMany({
+    where: {
+      userId,
+      deletedAt: null,
+      status: { notIn: ["COMPLETED", "CANCELLED"] },
+    },
+    orderBy: { dueAt: "asc" },
+  });
+
+  if (reminders.length === 0) {
+    await sendTelegramMessage({
+      chatId,
+      text: "📋 <b>আপনার কোনো সক্রিয় রিমাইন্ডার নেই।</b>\n\nনতুন রিমাইন্ডার সেট করতে টেক্সট বা মুখে বলে ভয়েস নোট পাঠান, যেমন:\n<i>\"কাল বিকেল ৫টায় মিটিং মনে রেখো\"</i>",
+      replyMarkup: getQuickHelpKeyboard(),
+    });
+    return;
+  }
+
+  const lines = reminders.map((r, i) => {
+    const num = ["১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯", "১০"][i] || `${i + 1}`;
+    const statusIcon = r.isSeen ? "👁️ দেখা হয়েছে" : "⏳ অপেক্ষমাণ";
+    return `${num}️⃣ <b>${r.title}</b>\n   ⏰ <b>সময়:</b> ${formatFriendlyDate(r.dueAt)}\n   📌 <b>স্ট্যাটাস:</b> ${statusIcon}${r.categoryName ? ` | 🏷️ ${r.categoryName}` : ""}${r.description && r.description !== r.title ? `\n   📝 ${r.description}` : ""}`;
+  });
+
+  const messageText = `📋 <b>আপনার সব রিমাইন্ডারের তালিকা (${reminders.length}টি):</b>\n\n${lines.join("\n\n")}\n\n<i>যেকোনো কাজ শেষ হলে সংশ্লিষ্ট রিমাইন্ডারে রেসপন্স করুন অথবা 'Done' বলুন।</i>`;
+
+  await sendTelegramMessage({
+    chatId,
+    text: messageText,
+    replyMarkup: getQuickHelpKeyboard(),
+  });
+}
+
+export async function handleShowTodayReminders(userId: string, chatId: string | number) {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+  const reminders = await prisma.reminder.findMany({
+    where: {
+      userId,
+      deletedAt: null,
+      dueAt: { gte: startOfToday, lte: endOfToday },
+      status: { notIn: ["COMPLETED", "CANCELLED"] },
+    },
+    orderBy: { dueAt: "asc" },
+  });
+
+  if (reminders.length === 0) {
+    await sendTelegramMessage({
+      chatId,
+      text: "✨ <b>আজকের কোনো রিমাইন্ডার নেই!</b> 🎉\n\nআজকের জন্য আপনার কোনো পেন্ডিং শিডিউল নেই। সম্পূর্ণ দিন মুক্ত আছে!",
+      replyMarkup: getQuickHelpKeyboard(),
+    });
+    return;
+  }
+
+  const lines = reminders.map((r, i) => {
+    const num = ["১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯", "১০"][i] || `${i + 1}`;
+    const timeStr = new Date(r.dueAt).toLocaleTimeString("bn-BD", { hour: "numeric", minute: "2-digit", hour12: true });
+    return `${num}️⃣ <b>${r.title}</b>\n   ⏰ সময়: <b>${timeStr}</b> (${formatFriendlyDate(r.dueAt)})\n   📌 অবস্থা: ${r.isSeen ? "👁️ দেখা হয়েছে" : "🔔 অ্যালার্ট বাকি"}${r.description && r.description !== r.title ? `\n   📝 ${r.description}` : ""}`;
+  });
+
+  const messageText = `📅 <b>আজকের রিমাইন্ডার সমূহ (${reminders.length}টি):</b>\n\n${lines.join("\n\n")}`;
+
+  await sendTelegramMessage({
+    chatId,
+    text: messageText,
+    replyMarkup: getQuickHelpKeyboard(),
+  });
+}
+
+export async function handleShowTodayTasks(userId: string, chatId: string | number) {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+  const tasks = await prisma.task.findMany({
+    where: {
+      userId,
+      status: { in: ["TODO", "IN_PROGRESS"] },
+      OR: [
+        { dueDate: { gte: startOfToday, lte: endOfToday } },
+        { dueDate: null },
+      ],
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  if (tasks.length === 0) {
+    await sendTelegramMessage({
+      chatId,
+      text: "📝 <b>আজকের কোনো কাজ (Tasks) তালিকাভুক্ত নেই!</b>\n\nনতুন কাজ যোগ করতে লিখুন, যেমন:\n<i>\"কাজ: অফিস প্রেজেন্টেশন তৈরি করা\"</i>",
+      replyMarkup: getQuickHelpKeyboard(),
+    });
+    return;
+  }
+
+  const lines = tasks.map((t, i) => {
+    const num = ["১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯", "১০"][i] || `${i + 1}`;
+    const statusIcon = t.status === "IN_PROGRESS" ? "🔄 চলমান" : "⬜ বাকি";
+    const prioIcon = t.priority === "HIGH" ? "🔥 High" : "📌 Normal";
+    return `${num}️⃣ <b>${t.title}</b>\n   ${statusIcon} | প্রায়োরিটি: ${prioIcon} | ক্যাটাগরি: ${t.category}${t.description ? `\n   📝 ${t.description}` : ""}`;
+  });
+
+  const messageText = `📝 <b>আজকের সব কাজের তালিকা (${tasks.length}টি):</b>\n\n${lines.join("\n\n")}`;
+
+  await sendTelegramMessage({
+    chatId,
+    text: messageText,
+    replyMarkup: getQuickHelpKeyboard(),
+  });
+}
+
+export async function handleShowMemories(userId: string, chatId: string | number) {
+  const memories = await prisma.memory.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    take: 5,
+  });
+
+  if (memories.length === 0) {
+    await sendTelegramMessage({
+      chatId,
+      text: "🧠 আপনার কোনো সংরক্ষিত মেমোরি নেই। যেকোনো তথ্য মনে রাখতে আমাকে বলুন!",
+      replyMarkup: getQuickHelpKeyboard(),
+    });
+    return;
+  }
+
+  const lines = memories.map((m, i) => `${i + 1}️⃣ <b>${m.key}:</b> ${m.value || m.summary || ""}`);
+  await sendTelegramMessage({
+    chatId,
+    text: `🧠 <b>আপনার সাম্প্রতিক সংরক্ষিত মেমোরি:</b>\n\n${lines.join("\n\n")}`,
+    replyMarkup: getQuickHelpKeyboard(),
+  });
+}
 
 export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
   try {
@@ -146,24 +284,52 @@ export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
       }
     }
 
+    if (action === "seen") {
+      const reminderId = param1;
+      await prisma.reminder.update({
+        where: { id: reminderId, userId: conn.userId },
+        data: {
+          isSeen: true,
+          seenAt: new Date(),
+          status: "SEEN",
+        },
+      }).catch(() => null);
+
+      await answerTelegramCallbackQuery(cq.id, "রিমাইন্ডারটি 'দেখেছি' চিহ্নিত করা হয়েছে!");
+      if (chatId) {
+        await sendTelegramMessage({
+          chatId,
+          text: "👁️ <b>ধন্যবাদ!</b> রিমাইন্ডারটি 'দেখেছি' হিসেবে চিহ্নিত করা হয়েছে। প্রতি ৫ মিনিটের নোটিফিকেশন বন্ধ করা হলো।",
+          replyMarkup: getQuickHelpKeyboard(),
+        });
+      }
+      return;
+    }
+
     if (action === "done") {
       const reminderId = param1;
       await prisma.reminder.update({
         where: { id: reminderId, userId: conn.userId },
-        data: { status: "COMPLETED", completedAt: new Date() },
-      });
+        data: {
+          status: "COMPLETED",
+          isSeen: true,
+          seenAt: new Date(),
+          completedAt: new Date(),
+        },
+      }).catch(() => null);
       await answerTelegramCallbackQuery(cq.id, "কাজটি সম্পন্ন হিসেবে চিহ্নিত করা হয়েছে! 🎉");
       if (chatId) {
         await sendTelegramMessage({
           chatId,
           text: "✅ চমৎকার! কাজটি সম্পন্ন হয়েছে। 🎯",
+          replyMarkup: getQuickHelpKeyboard(),
         });
       }
       return;
     }
 
     if (action === "snooze") {
-      const duration = param1; // "1h", "3h", "tomorrow"
+      const duration = param1; // "10m", "1h", "3h", "tomorrow"
       const reminderId = param2;
 
       const reminder = await prisma.reminder.findUnique({
@@ -172,13 +338,19 @@ export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
 
       if (reminder) {
         let newDueAt = new Date();
-        if (duration === "1h") newDueAt = addHours(new Date(), 1);
+        if (duration === "10m") newDueAt = new Date(Date.now() + 10 * 60 * 1000);
+        else if (duration === "1h") newDueAt = addHours(new Date(), 1);
         else if (duration === "3h") newDueAt = addHours(new Date(), 3);
         else if (duration === "tomorrow") newDueAt = addDays(new Date(), 1);
 
         await prisma.reminder.update({
           where: { id: reminder.id },
-          data: { dueAt: newDueAt, status: "SNOOZED" },
+          data: {
+            dueAt: newDueAt,
+            status: "SNOOZED",
+            isSeen: true,
+            seenAt: new Date(),
+          },
         });
 
         await prisma.reminderNotification.create({
@@ -196,7 +368,7 @@ export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
         if (chatId) {
           await sendTelegramMessage({
             chatId,
-            text: `⏳ ঠিক আছে, ${duration} পর আপনাকে আবার মনে করিয়ে দেওয়া হবে!`,
+            text: `⏳ ঠিক আছে, ${duration === "10m" ? "১০ মিনিট" : duration} পর আপনাকে আবার মনে করিয়ে দেওয়া হবে!`,
           });
         }
       }
@@ -221,12 +393,26 @@ export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
 
     if (action === "cmd") {
       const cmd = param1;
-      let text = "সব রিমাইন্ডার দেখতে 'আমার reminder দেখাও' বলুন।";
-      if (cmd === "today") text = "আজকের রিমাইন্ডার দেখতে 'আজকের reminder দেখাও' বলুন।";
-      if (cmd === "memory") text = "মেমোরি দেখতে 'আমার memory দেখাও' বলুন।";
       await answerTelegramCallbackQuery(cq.id);
       if (chatId) {
-        await sendTelegramMessage({ chatId, text });
+        if (cmd === "all_reminders") {
+          await handleShowAllReminders(conn.userId, chatId);
+          return;
+        }
+        if (cmd === "today" || cmd === "today_reminders") {
+          await handleShowTodayReminders(conn.userId, chatId);
+          return;
+        }
+        if (cmd === "today_tasks") {
+          await handleShowTodayTasks(conn.userId, chatId);
+          return;
+        }
+        if (cmd === "memory") {
+          await handleShowMemories(conn.userId, chatId);
+          return;
+        }
+        let text = "সব রিমাইন্ডার দেখতে 'সব reminder দেখাও' বলুন অথবা আজকের কাজের জন্য 'আজকের কাজের list দেখাও' বলুন।";
+        await sendTelegramMessage({ chatId, text, replyMarkup: getQuickHelpKeyboard() });
       }
       return;
     }
@@ -568,6 +754,128 @@ export async function handleTelegramUpdate(update: TelegramWebhookUpdate) {
 
     // E. Handle Natural Language Text Questions or Commands
     if (text) {
+      const normalizedText = text.trim();
+      const lowerText = normalizedText.toLowerCase();
+
+      // 1. User command: "সব reminder দেখাও" (#Requirement 1)
+      const isAllRemindersQuery =
+        lowerText === "সব reminder দেখাও" ||
+        lowerText === "সব reminder" ||
+        lowerText === "সব রিমাইন্ডার দেখাও" ||
+        lowerText === "সব রিমাইন্ডার" ||
+        lowerText === "সকল reminder দেখাও" ||
+        lowerText === "সকল রিমাইন্ডার দেখাও" ||
+        lowerText === "আমার সব reminder দেখাও" ||
+        lowerText === "আমার সব reminder" ||
+        lowerText === "আমার সব রিমাইন্ডার দেখাও" ||
+        lowerText === "আমার সব রিমাইন্ডার" ||
+        lowerText === "all reminders" ||
+        lowerText === "all reminder" ||
+        lowerText === "/all_reminders" ||
+        lowerText === "/reminders" ||
+        /^(সব|সকল|আমার সব|সমস্ত)\s+(রিমাইন্ডার|reminder|reminders)(\s+দেখাও|\s+লিস্ট|\s+তালিকা)?$/i.test(normalizedText);
+
+      if (isAllRemindersQuery) {
+        await handleShowAllReminders(userId, chatId);
+        return;
+      }
+
+      // 2. User command: "আজকের reminder দেখাও" (#Requirement 2)
+      const isTodayRemindersQuery =
+        lowerText === "আজকের reminder দেখাও" ||
+        lowerText === "আজকের reminder" ||
+        lowerText === "আজকের রিমাইন্ডার দেখাও" ||
+        lowerText === "আজকের রিমাইন্ডার" ||
+        lowerText === "আজকে কি reminder আছে" ||
+        lowerText === "আজকে কি রিমাইন্ডার আছে" ||
+        lowerText === "আজকেরগুলো দেখাও" ||
+        lowerText === "আজকের গুলো দেখাও" ||
+        lowerText === "today reminder" ||
+        lowerText === "today reminders" ||
+        lowerText === "today's reminders" ||
+        lowerText === "/today" ||
+        lowerText === "/today_reminders" ||
+        /^(আজকের|আজকে কি|আজকের সব)\s+(রিমাইন্ডার|reminder|reminders)(\s+দেখাও|\s+আছে|\s+লিস্ট)?$/i.test(normalizedText);
+
+      if (isTodayRemindersQuery) {
+        await handleShowTodayReminders(userId, chatId);
+        return;
+      }
+
+      // 3. User command: "আজকের কাজের list দেখাও" (#Requirement 3)
+      const isTodayTasksQuery =
+        lowerText === "আজকের কাজের list দেখাও" ||
+        lowerText === "আজকের কাজের লিস্ট দেখাও" ||
+        lowerText === "আজকের কাজের তালিকা দেখাও" ||
+        lowerText === "আজকের কাজের list" ||
+        lowerText === "আজকের কাজের লিস্ট" ||
+        lowerText === "আজকের কাজের তালিকা" ||
+        lowerText === "আজকের কাজ দেখাও" ||
+        lowerText === "আজকের কাজ" ||
+        lowerText === "আজকের কাজগুলো" ||
+        lowerText === "আজকের সব কাজ দেখাও" ||
+        lowerText === "কাজের list দেখাও" ||
+        lowerText === "কাজের লিস্ট দেখাও" ||
+        lowerText === "কাজের তালিকা দেখাও" ||
+        lowerText === "today tasks" ||
+        lowerText === "today's tasks" ||
+        lowerText === "today task list" ||
+        lowerText === "/tasks" ||
+        lowerText === "/today_tasks" ||
+        /^(আজকের|আজকে কি|আজকের সব)\s+(কাজের|কাজ|কাজের তালিকা|কাজের লিস্ট|কাজের list)(\s+দেখাও|\s+লিস্ট|\s+list|\s+তালিকা)?$/i.test(normalizedText) ||
+        /^(কাজের\s+(list|লিস্ট|তালিকা)(\s+দেখাও)?)$/i.test(normalizedText);
+
+      if (isTodayTasksQuery) {
+        await handleShowTodayTasks(userId, chatId);
+        return;
+      }
+
+      // 4. Seen / Read Acknowledgment text (to stop 5-minute repeating alerts)
+      const isSeenAck =
+        lowerText === "দেখেছি" ||
+        lowerText === "seen" ||
+        lowerText === "দেখা শেষ" ||
+        lowerText === "দেখা হয়েছে" ||
+        lowerText === "রিমাইন্ডার দেখেছি" ||
+        lowerText === "মেসেজ দেখেছি" ||
+        lowerText === "বুঝেছি" ||
+        lowerText === "ok" ||
+        lowerText === "পাইছি" ||
+        lowerText === "পেয়েছি" ||
+        lowerText === "নোটিফিকেশন বন্ধ করো" ||
+        lowerText === "বন্ধ করো";
+
+      if (isSeenAck) {
+        const latestUnseen = await prisma.reminder.findFirst({
+          where: {
+            userId,
+            isSeen: false,
+            status: { notIn: ["COMPLETED", "CANCELLED"] },
+            deletedAt: null,
+            dueAt: { lte: new Date() },
+          },
+          orderBy: { dueAt: "desc" },
+        });
+
+        if (latestUnseen) {
+          await prisma.reminder.update({
+            where: { id: latestUnseen.id },
+            data: {
+              isSeen: true,
+              seenAt: new Date(),
+              status: "SEEN",
+            },
+          });
+
+          await sendTelegramMessage({
+            chatId,
+            text: `👁️ <b>রিমাইন্ডারটি 'দেখেছি' হিসেবে চিহ্নিত করা হয়েছে!</b>\n\n📌 <b>${latestUnseen.title}</b>\n\nপ্রতি ৫ মিনিটের পুনরাবৃত্তি নোটিফিকেশন বন্ধ করা হয়েছে। কাজটি শেষ হলে 'Done' লিখে জানাতে পারেন।`,
+            replyMarkup: getQuickHelpKeyboard(),
+          });
+          return;
+        }
+      }
+
       // Check if user is asking about previous memories/documents (#89, #110)
       const isQuestionOrDocSearch =
         text.includes("?") ||

@@ -2,15 +2,15 @@ export function getReminderActionKeyboard(reminderId: string) {
   return {
     inline_keyboard: [
       [
-        { text: "✅ Done", callback_data: `done:${reminderId}` },
-        { text: "⏳ Snooze 1h", callback_data: `snooze:1h:${reminderId}` },
+        { text: "👁️ দেখেছি (নোটিফিকেশন বন্ধ)", callback_data: `seen:${reminderId}` },
       ],
       [
-        { text: "⏰ Snooze 3h", callback_data: `snooze:3h:${reminderId}` },
-        { text: "📅 Tomorrow", callback_data: `snooze:tomorrow:${reminderId}` },
+        { text: "✅ কাজ সম্পন্ন (Done)", callback_data: `done:${reminderId}` },
+        { text: "⏳ ১০ মিনিট পর", callback_data: `snooze:10m:${reminderId}` },
       ],
       [
-        { text: "🗑️ Delete", callback_data: `delete:${reminderId}` },
+        { text: "⏰ ১ ঘণ্টা পর", callback_data: `snooze:1h:${reminderId}` },
+        { text: "🗑️ ডিলিট", callback_data: `delete:${reminderId}` },
       ],
     ],
   };
@@ -20,11 +20,14 @@ export function getFollowUpKeyboard(reminderId: string) {
   return {
     inline_keyboard: [
       [
-        { text: "✅ Done", callback_data: `done:${reminderId}` },
-        { text: "⏰ Remind Later", callback_data: `snooze:1h:${reminderId}` },
+        { text: "👁️ দেখেছি (নোটিফিকেশন বন্ধ)", callback_data: `seen:${reminderId}` },
       ],
       [
-        { text: "❌ Not Needed", callback_data: `delete:${reminderId}` },
+        { text: "✅ সম্পন্ন", callback_data: `done:${reminderId}` },
+        { text: "⏰ ১ ঘণ্টা পর", callback_data: `snooze:1h:${reminderId}` },
+      ],
+      [
+        { text: "🗑️ ডিলিট", callback_data: `delete:${reminderId}` },
       ],
     ],
   };
@@ -34,12 +37,12 @@ export function getQuickHelpKeyboard() {
   return {
     inline_keyboard: [
       [
-        { text: "📋 আজকের রিমাইন্ডার", callback_data: "cmd:today" },
-        { text: "📅 আগামী ৭ দিন", callback_data: "cmd:7days" },
+        { text: "📋 সব রিমাইন্ডার", callback_data: "cmd:all_reminders" },
+        { text: "📅 আজকের রিমাইন্ডার", callback_data: "cmd:today_reminders" },
       ],
       [
+        { text: "📝 আজকের কাজের লিস্ট", callback_data: "cmd:today_tasks" },
         { text: "🧠 মেমোরি সমূহ", callback_data: "cmd:memory" },
-        { text: "🔁 Recurring", callback_data: "cmd:recurring" },
       ],
     ],
   };

@@ -109,11 +109,22 @@ export async function answerTelegramCallbackQuery(callbackQueryId: string, text?
 export async function sendReminderTelegramAlert({
   chatId,
   reminder,
+  isRepeat = false,
+  repeatCount = 0,
 }: {
   chatId: string | number;
   reminder: { id: string; title: string; dueAt: Date; description?: string | null };
+  isRepeat?: boolean;
+  repeatCount?: number;
 }) {
-  const text = `🔔 <b>রিমাইন্ডার এলার্ট!</b>\n\n📌 <b>${reminder.title}</b>\n⏰ সময়: ${formatFriendlyDate(reminder.dueAt)}\n\n${reminder.description && reminder.description !== reminder.title ? `📝 ${reminder.description}\n\n` : ""}কাজটি কি সম্পন্ন হয়েছে?`;
+  const header = isRepeat
+    ? `🔁 <b>পুনঃস্মারক নোটিফিকেশন (${repeatCount > 0 ? `${repeatCount}ম বার` : "প্রতি ৫ মিনিট"})</b>`
+    : `🔔 <b>রিমাইন্ডার এলার্ট!</b>`;
+
+  const text = `${header}\n\n📌 <b>${reminder.title}</b>\n⏰ নির্ধারিত সময়: ${formatFriendlyDate(reminder.dueAt)}\n${
+    reminder.description && reminder.description !== reminder.title ? `📝 ${reminder.description}\n` : ""
+  }\n⚠️ <i>মেসেজটি দেখে থাকলে নিচের <b>'👁️ দেখেছি'</b> বাটনে চাপ দিন। না চাপলে প্রতি ৫ মিনিট পর পর নোটিফিকেশন পাঠানো হবে।</i>`;
+
   return sendTelegramMessage({
     chatId,
     text,
@@ -128,7 +139,7 @@ export async function sendOverdueTelegramFollowUp({
   chatId: string | number;
   reminder: { id: string; title: string; dueAt: Date };
 }) {
-  const text = `⚠️ <b>ফলো-আপ রিমাইন্ডার</b>\n\nআপনার <b>${reminder.title}</b> কাজটি এখনও সম্পূর্ণ হিসেবে চিহ্নিত করা হয়নি।\n\nকাজটি কি শেষ হয়েছে নাকি পরে মনে করিয়ে দেব?`;
+  const text = `⚠️ <b>ফলো-আপ রিমাইন্ডার</b>\n\nআপনার <b>${reminder.title}</b> কাজটি এখনও সম্পূর্ণ বা দেখা হিসেবে চিহ্নিত করা হয়নি।\n\nকাজটি শেষ হলে 'Done' অথবা নোটিফিকেশন থামাতে 'দেখেছি' বাটনে চাপ দিন:`;
   return sendTelegramMessage({
     chatId,
     text,

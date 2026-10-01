@@ -685,8 +685,21 @@ function fallbackContextualParser(
     return { intent: "weekly_review", reply_bn: "আপনার সাপ্তাহিক কাজের পর্যালোচনা।" };
   }
 
-  // 2. Query Schedule / Reminders
-  if (lower.includes("আজকে কী") || lower.includes("কাল কী") || lower.includes("কাজ আছে") || lower.includes("schedule") || lower.includes("pending")) {
+  // 2. Query Schedule / Reminders / Tasks
+  if (
+    lower.includes("কাজ আছে") ||
+    lower.includes("রিমাইন্ডার আছে") ||
+    lower.includes("রিমাইন্ডার কি") ||
+    lower.includes("রিমাইন্ডার কী") ||
+    lower.includes("আজকে কী") ||
+    lower.includes("আজকে কি") ||
+    lower.includes("কাল কী") ||
+    lower.includes("কাল কি") ||
+    lower.includes("schedule") ||
+    lower.includes("pending") ||
+    lower.includes("reminder দেখাও") ||
+    lower.includes("রিমাইন্ডার দেখাও")
+  ) {
     const isTomorrow = lower.includes("কাল") || lower.includes("tomorrow");
     return {
       intent: "query_schedule",
@@ -694,12 +707,32 @@ function fallbackContextualParser(
     };
   }
 
-  // 3. Question answering with Anti-Hallucination (#191)
-  if (lower.includes("কবে") || lower.includes("কত?") || lower.includes("কত") || lower.includes("কে?") || lower.includes("কোথায়") || lower.includes("when is") || lower.includes("who is") || lower.includes("what is")) {
-    const cleanSearch = message.replace(/কবে|কখন|কোথায়|কে\?|কত\?|কত|\?|who is|what is|when is/gi, "").trim();
+  // 3. Question answering from saved memory (#191)
+  const isQuestion =
+    lower.includes("?") ||
+    lower.includes("কি?") ||
+    lower.includes("কী?") ||
+    lower.includes(" কি ") ||
+    lower.endsWith(" কি") ||
+    lower.includes(" কী ") ||
+    lower.endsWith(" কী") ||
+    lower.includes("কবে") ||
+    lower.includes("কত") ||
+    lower.includes("কোথায়") ||
+    lower.includes("বলো") ||
+    lower.includes("জানাও") ||
+    lower.includes("মনে আছে") ||
+    lower.includes("when is") ||
+    lower.includes("who is") ||
+    lower.includes("what is");
+
+  if (isQuestion && !lower.includes("মনে রেখো") && !lower.includes("মনে রাখ") && !lower.includes("save")) {
+    const cleanSearch = message
+      .replace(/আমার|আমারে|কি\?|কী\?|কি|কী|কবে|কখন|কোথায়|কে\?|কত\?|কত|\?|বলো|বলুন|জানাও|who is|what is|when is|where is/gi, "")
+      .trim();
     return {
       intent: "query_memories",
-      target_reference: cleanSearch,
+      target_reference: cleanSearch || message,
     };
   }
 

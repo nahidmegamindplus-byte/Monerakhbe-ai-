@@ -22,12 +22,12 @@ export async function POST(req: NextRequest) {
 
     if (!customToken) {
       return NextResponse.json(
-        { error: "টেলিগ্রাম বট টোকেন পাওয়া যায়নি। দয়া করে আগে বটের টোকেন দিয়ে সেভ করুন।" },
+        { error: "টেলিগ্রাম বট টোকেন পাওয়া যায়নি। দয়া করে আগে বটের টোকেন দিয়ে কানেক্ট করুন।" },
         { status: 400 }
       );
     }
 
-    // 1. Test Bot API Token validity with Telegram API
+    // 1. Verify Bot API Token with Telegram API
     const getMeRes = await fetch(`https://api.telegram.org/bot${customToken}/getMe`);
     const getMeData = await getMeRes.json();
 
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "বট টোকেনটি সঠিক নয় বা Telegram API এর সাথে কানেক্ট করা যায়নি: " + (getMeData.description || ""),
+          error: "বট টোকেনটি সঠিক নয়: " + (getMeData.description || ""),
           telegramError: getMeData.description,
         },
         { status: 400 }
@@ -44,17 +44,17 @@ export async function POST(req: NextRequest) {
 
     const botInfo = getMeData.result;
 
-    // 2. Lookup existing connected Telegram account
+    // 2. Lookup existing connected Telegram account for this user
     let connection = await prisma.telegramConnection.findFirst({
       where: { userId: session.id },
     });
 
-    let targetChatId = (body.chatId ? String(body.chatId).trim() : "") || (connection?.isConnected && connection?.chatId ? connection.chatId : "");
+    let targetChatId = connection?.chatId ? String(connection.chatId).trim() : "";
 
-    // 3. Smart Auto-Discovery: If no Chat ID, check recent Telegram updates to find who messaged the bot
+    // 3. Smart Auto-Discovery: Check recent updates from Telegram to automatically grab chat ID
     if (!targetChatId) {
       try {
-        const updatesRes = await fetch(`https://api.telegram.org/bot${customToken}/getUpdates?limit=10`);
+        const updatesRes = await fetch(`https://api.telegram.org/bot${customToken}/getUpdates?limit=20`);
         const updatesData = await updatesRes.json();
         if (updatesData.ok && Array.isArray(updatesData.result) && updatesData.result.length > 0) {
           const latestMsg = [...updatesData.result].reverse().find((u: any) => u.message?.chat?.id);
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
                 userId: session.id,
                 telegramUserId: String(fromUser?.id || targetChatId),
                 chatId: targetChatId,
-                username: fromUser?.username || null,
+                username: fromUser?.username || botInfo.username,
                 firstName: fromUser?.first_name || session.name,
                 isConnected: true,
                 connectedAt: new Date(),
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
               update: {
                 telegramUserId: String(fromUser?.id || targetChatId),
                 chatId: targetChatId,
-                username: fromUser?.username || connection?.username || null,
+                username: fromUser?.username || connection?.username || botInfo.username,
                 firstName: fromUser?.first_name || connection?.firstName || session.name,
                 isConnected: true,
                 connectedAt: new Date(),
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. If still no Chat ID, advise user with clear instructions
+    // 4. If still no Chat ID found:
     if (!targetChatId) {
       return NextResponse.json(
         {
@@ -98,17 +98,17 @@ export async function POST(req: NextRequest) {
           botValid: true,
           botName: botInfo.first_name,
           botUsername: botInfo.username,
-          userConnected: false,
           messageSent: false,
-          error: `আপনার টেলিগ্রাম অ্যাকাউন্ট এখনও কানেক্ট করা হয়নি। টেলিগ্রাম অ্যাপে @${botInfo.username} বটে গিয়ে 'START' বাটনে চাপ দিন অথবা নিচে আপনার Telegram Chat ID লিখে টেস্ট বাটনে ক্লিক করুন।`,
-          deepLink: `https://t.me/${botInfo.username}?start=connect_${connection?.connectionToken || session.id.slice(0, 12)}`,
+          needsStart: true,
+          error: `বট (@${botInfo.username}) সংযুক্ত রয়েছে! কিন্তু টেস্ট মেসেজটি ফোনে পেতে টেলিগ্রাম অ্যাপে @${botInfo.username} বটে গিয়ে শুধু একবার 'START' বাটনে চাপ দিন, তারপর এখানে 'টেস্ট মেসেজ পাঠান' বাটনে ১-ক্লিক করুন।`,
+          deepLink: `https://t.me/${botInfo.username}`,
         },
         { status: 400 }
       );
     }
 
     // 5. Send Live Test Message to Telegram
-    const testText = `🔔 <b>MoneRakhbe AI — টেস্ট নোটিফিকেশন</b>\n\n✅ অভিনন্দন <b>${session.name || "ইউজার"}</b>!\nআপনার টেলিগ্রাম বট সফলভাবে কানেক্ট হয়েছে এবং টেস্ট মেসেজ সফলভাবে এসেছে।\n\n📌 <i>এখন থেকে আপনি আমাকে যেকোনো কাজের কথা, মিটিংয়ের রিমাইন্ডার, মেমোরি নোট, ছবি বা ভয়েস রেকর্ড পাঠাতে পারেন। আমি স্বয়ংক্রিয়ভাবে মনে রাখব!</i>\n\n⏰ টেস্ট টাইম: ${new Date().toLocaleTimeString("bn-BD")}`;
+    const testText = `🔔 <b>MoneRakhbe AI — টেস্ট নোটিফিকেশন</b>\n\n✅ অভিনন্দন <b>${session.name || "ইউজার"}</b>!\nআপনার টেলিগ্রাম বট সফলভাবে কানেক্ট হয়েছে এবং ১-ক্লিক টেস্ট মেসেজ সফলভাবে পৌঁছেছে।\n\n📌 <i>এখন থেকে আপনি আমাকে যেকোনো কাজের কথা, মিটিংয়ের রিমাইন্ডার, মেমোরি নোট, ছবি বা ভয়েস রেকর্ড পাঠাতে পারেন। আমি স্বয়ংক্রিয়ভাবে মনে রাখব!</i>\n\n⏰ টেস্ট টাইম: ${new Date().toLocaleTimeString("bn-BD")}`;
 
     const messageResult = await sendTelegramMessage({
       chatId: targetChatId,
@@ -123,29 +123,20 @@ export async function POST(req: NextRequest) {
           botValid: true,
           botUsername: botInfo.username,
           messageSent: false,
-          error: `মেসেজ ডেলিভারি ব্যর্থ হয়েছে (${desc})। টেলিগ্রামের নিয়মানুযায়ী কোনো বট প্রথমে নিজে থেকে মেসেজ পাঠাতে পারে না—অনুগ্রহ করে আগে টেলিগ্রামে @${botInfo.username} বটে গিয়ে একবার 'START' দিন।`,
+          error: `মেসেজ ডেলিভারি ব্যর্থ হয়েছে (${desc})। টেলিগ্রামের নিয়মানুযায়ী কোনো বট প্রথমে নিজে থেকে মেসেজ পাঠাতে পারে না—অনুগ্রহ করে টেলিগ্রামে @${botInfo.username} বটে গিয়ে একবার 'START' দিন।`,
           telegramError: desc,
+          deepLink: `https://t.me/${botInfo.username}`,
         },
         { status: 400 }
       );
     }
 
-    // Ensure connection is marked as connected if test message succeeded
+    // Ensure connection is marked as connected with targetChatId
     if (connection && (!connection.isConnected || connection.chatId !== targetChatId)) {
       await prisma.telegramConnection.update({
         where: { id: connection.id },
         data: {
           chatId: targetChatId,
-          isConnected: true,
-          connectedAt: new Date(),
-        },
-      });
-    } else if (!connection) {
-      await prisma.telegramConnection.create({
-        data: {
-          userId: session.id,
-          chatId: targetChatId,
-          telegramUserId: targetChatId,
           isConnected: true,
           connectedAt: new Date(),
         },

@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import crypto from "crypto";
 import { startTelegramAutoPoller } from "@/services/telegram/poller";
+import { getTelegramBotToken } from "@/services/telegram/bot";
 
 export const dynamic = "force-dynamic";
 
@@ -28,16 +29,29 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    const botToken = await getTelegramBotToken();
+    const hasBot = Boolean(botToken && botToken.trim());
     const botUsername = process.env.TELEGRAM_BOT_USERNAME || "MoneRakhbeBot";
-    const deepLink = `https://t.me/${botUsername}?start=connect_${token}`;
+    const deepLink = `https://t.me/${botUsername}`;
+
+    // If bot token is active, ensure user's connection reflects connected state
+    const isConnected = hasBot || connection.isConnected;
+    if (hasBot && !connection.isConnected) {
+      await prisma.telegramConnection.update({
+        where: { id: connection.id },
+        data: { isConnected: true, username: connection.username || botUsername },
+      }).catch(() => {});
+    }
 
     return NextResponse.json({
       success: true,
-      isConnected: connection.isConnected,
-      telegramUsername: connection.username,
-      firstName: connection.firstName,
-      connectedAt: connection.connectedAt,
-      token,
+      isConnected,
+      hasBotToken: hasBot,
+      telegramUsername: connection.username || botUsername,
+      firstName: connection.firstName || session.name,
+      connectedAt: connection.connectedAt || new Date(),
+      chatId: connection.chatId,
+      botUsername,
       deepLink,
     });
   } catch (error) {

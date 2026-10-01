@@ -16,8 +16,10 @@ const prismaDir = path.join(rootDir, 'prisma');
 const defaultJwtSecret = 'monerakhbe-' + crypto.randomBytes(16).toString('hex');
 const defaultCronSecret = 'cron-' + crypto.randomBytes(16).toString('hex');
 
+const appUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+
 const defaultEnvConfig = {
-  NEXT_PUBLIC_APP_URL: 'http://localhost:3000',
+  NEXT_PUBLIC_APP_URL: appUrl,
   NEXT_PUBLIC_APP_NAME: 'MoneRakhbe AI',
   DATABASE_URL: 'file:./dev.db',
   JWT_SECRET: defaultJwtSecret,
@@ -34,7 +36,9 @@ const defaultEnvConfig = {
 try {
   let existingContent = '';
   if (fs.existsSync(envPath)) {
-    existingContent = fs.readFileSync(envPath, 'utf8');
+    try {
+      existingContent = fs.readFileSync(envPath, 'utf8');
+    } catch (_) {}
   }
 
   let updatedContent = existingContent;
@@ -57,8 +61,12 @@ try {
   }
 
   if (!fs.existsSync(envPath) || hasModifications) {
-    fs.writeFileSync(envPath, updatedContent.trim() + '\n', 'utf8');
-    console.log('[Zero-Config Env] Auto-configured .env with zero-dependency deployment defaults.');
+    try {
+      fs.writeFileSync(envPath, updatedContent.trim() + '\n', 'utf8');
+      console.log('[Zero-Config Env] Auto-configured .env with zero-dependency deployment defaults.');
+    } catch (writeErr) {
+      console.log('[Zero-Config Env] Injected defaults directly into process.env.');
+    }
   } else {
     console.log('[Zero-Config Env] Existing .env validated successfully.');
   }

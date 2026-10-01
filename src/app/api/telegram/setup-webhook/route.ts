@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getTelegramBotToken } from "@/services/telegram/bot";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const token = await getTelegramBotToken();
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET || "monerakhbe_webhook_secret_key";
 
     if (!token) {
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const customUrl = body.appUrl || body.url;
-    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const token = await getTelegramBotToken();
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET || "monerakhbe_webhook_secret_key";
 
     if (!token) {

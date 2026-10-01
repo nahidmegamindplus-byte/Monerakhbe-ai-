@@ -9,6 +9,7 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   experimental: {
+    instrumentationHook: true,
     serverComponentsExternalPackages: ["@prisma/client", "bcryptjs"],
     outputFileTracingIncludes: {
       "/api/**/*": ["./prisma/**/*", "./dev.db", "./prisma/dev.db"],

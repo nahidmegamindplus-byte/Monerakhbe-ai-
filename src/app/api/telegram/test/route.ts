@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { sendTelegramMessage, getTelegramBotToken } from "@/services/telegram/bot";
-import { startTelegramAutoPoller } from "@/services/telegram/poller";
+import { autoSyncTelegramWebhook } from "@/services/telegram/sync";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    startTelegramAutoPoller();
+    autoSyncTelegramWebhook(req).catch(() => {});
     const session = await getSessionUser(req);
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -110,10 +110,47 @@ export async function POST(req: NextRequest) {
     // 5. Send Live Test Message to Telegram
     const testText = `🔔 <b>MoneRakhbe AI — টেস্ট নোটিফিকেশন</b>\n\n✅ অভিনন্দন <b>${session.name || "ইউজার"}</b>!\nআপনার টেলিগ্রাম বট সফলভাবে কানেক্ট হয়েছে এবং ১-ক্লিক টেস্ট মেসেজ সফলভাবে পৌঁছেছে।\n\n📌 <i>এখন থেকে আপনি আমাকে যেকোনো কাজের কথা, মিটিংয়ের রিমাইন্ডার, মেমোরি নোট, ছবি বা ভয়েস রেকর্ড পাঠাতে পারেন। আমি স্বয়ংক্রিয়ভাবে মনে রাখব!</i>\n\n⏰ টেস্ট টাইম: ${new Date().toLocaleTimeString("bn-BD")}`;
 
-    const messageResult = await sendTelegramMessage({
+    let messageResult = await sendTelegramMessage({
       chatId: targetChatId,
       text: testText,
     });
+
+    // If initial delivery failed, try auto-discovering the latest active chat from Telegram updates
+    if (!messageResult || !messageResult.ok) {
+      try {
+        const updatesRes = await fetch(`https://api.telegram.org/bot${customToken}/getUpdates?limit=20`);
+        const updatesData = await updatesRes.json();
+        if (updatesData.ok && Array.isArray(updatesData.result) && updatesData.result.length > 0) {
+          const latestMsg = [...updatesData.result].reverse().find((u: any) => u.message?.chat?.id);
+          if (latestMsg && latestMsg.message) {
+            const freshChatId = String(latestMsg.message.chat.id);
+            const freshUser = latestMsg.message.from;
+            if (freshChatId !== targetChatId) {
+              targetChatId = freshChatId;
+              messageResult = await sendTelegramMessage({
+                chatId: targetChatId,
+                text: testText,
+              });
+              if (connection) {
+                await prisma.telegramConnection.update({
+                  where: { id: connection.id },
+                  data: {
+                    chatId: targetChatId,
+                    telegramUserId: String(freshUser?.id || targetChatId),
+                    username: freshUser?.username || connection.username,
+                    firstName: freshUser?.first_name || connection.firstName,
+                    isConnected: true,
+                    connectedAt: new Date(),
+                  },
+                }).catch(() => {});
+              }
+            }
+          }
+        }
+      } catch (recoveryErr) {
+        console.warn("[Telegram Auto-Recovery Error]", recoveryErr);
+      }
+    }
 
     if (!messageResult || !messageResult.ok) {
       const desc = messageResult?.description || "চ্যাট খুঁজে পাওয়া যায়নি";

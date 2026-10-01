@@ -3,11 +3,13 @@ import { getSessionUser } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import fs from "fs/promises";
 import path from "path";
+import { autoSyncTelegramWebhook } from "@/services/telegram/sync";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    autoSyncTelegramWebhook(req).catch(() => {});
     const session = await getSessionUser(req);
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -130,26 +132,8 @@ export async function POST(req: NextRequest) {
         console.log("[Telegram Config] Serverless read-only filesystem detected. Saved to DB & Memory.");
       }
 
-      // 5. Automatically configure Telegram Webhook if live HTTPS domain is available
-      try {
-        const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "";
-        const proto = req.headers.get("x-forwarded-proto") || (req.nextUrl.protocol.replace(":", ""));
-        const detectedUrl = host ? `${proto}://${host}` : "";
-        const envAppUrl = process.env.NEXT_PUBLIC_APP_URL || "";
-        const activeUrl = detectedUrl.startsWith("https://") ? detectedUrl : envAppUrl.startsWith("https://") ? envAppUrl : "";
-
-        if (activeUrl.startsWith("https://")) {
-          const webhookUrl = `${activeUrl.replace(/\/$/, "")}/api/telegram/webhook`;
-          const secret = process.env.TELEGRAM_WEBHOOK_SECRET || "monerakhbe_webhook_secret_key";
-          await fetch(
-            `https://api.telegram.org/bot${cleanToken}/setWebhook?url=${encodeURIComponent(
-              webhookUrl
-            )}&secret_token=${encodeURIComponent(secret)}&drop_pending_updates=true`
-          );
-        }
-      } catch (whErr) {
-        console.warn("[Telegram Config Auto-Webhook Warning]", whErr);
-      }
+      // 5. Automatically sync Telegram Webhook or Long Polling
+      await autoSyncTelegramWebhook(req, cleanToken).catch(() => {});
 
       return NextResponse.json({
         success: true,
